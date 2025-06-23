@@ -23,7 +23,12 @@ const router = createRouter({
           path: 'conocenos',
           name: 'conocenos',
           component: () => import('../views/Admin/ConocenosView.vue')
-        }
+        },
+        {
+          path: 'Nosotros',
+          name: 'Nosotros',
+          component: () => import('../views/Admin/ConocenosView.vue')
+        },
       ]
     }
   ]

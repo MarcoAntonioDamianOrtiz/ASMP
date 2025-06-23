@@ -1,22 +1,17 @@
 <script setup lang="ts">
-    import Link from './Link.vue';
+import Link from './Link.vue';
+import Logo from './Logo.vue';
 </script>
 <template>
     <header class="px-10 py-5 bg-gray-700 flex justify-between absolute top-0 w-full z-10">
         <div>
-            <h1 class="text-3xl font-black">
-                POS
-                <span class="text-green-500">Vue.js</span>
-            </h1>
+            <Logo />
         </div>
-
         <nav>
-            <Link
-                to="index">
-                Ir a pagina de inicio   
+            <Link to="index">
+            inicio
             </Link>
         </nav>
 
     </header>
 </template>
-
