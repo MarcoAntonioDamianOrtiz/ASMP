@@ -4,7 +4,7 @@
 
 
 <template>
-    <div>
+    <div class="pt-32">
         <AdminNav />
         <RouterView />
     </div>

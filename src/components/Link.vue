@@ -11,7 +11,7 @@
 <template>
     <RouterLink
     :to="{name: to}"
-    class="rounded bg-green-400 hover:bg-green-500 font-bold py-2 px-10"
+    class="rounded hover:bg-orange-600 font-bold py-2 px-10 text-white bg-orange-600"
     >
         <slot>
 

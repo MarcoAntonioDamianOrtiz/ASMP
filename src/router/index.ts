@@ -6,29 +6,29 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      name: 'index',
+      name: 'Index',
       component: Index
+    },
+    {
+      path: '/nosotros',
+      name: 'Nosotros',
+      component: () => import('../views/Admin/NosotrosView.vue')
+    },
+    {
+      path: '/contacto',
+      name: 'Contacto',
+      component: () => import('../views/Admin/ContactoView.vue')
     },
     {
       path: '/admin',
       name: 'admin',
-      component: () => import('../views/Admin/Layout.vue'),
+      component: () => import('../views/admin/AdminLayout.vue'),
       children: [
         {
           path: '',
           name: 'admin-home',
-          component: () => import('../views/Admin/ConocenosView.vue')
-        },
-        {
-          path: 'conocenos',
-          name: 'conocenos',
-          component: () => import('../views/Admin/ConocenosView.vue')
-        },
-        {
-          path: 'Nosotros',
-          name: 'Nosotros',
-          component: () => import('../views/Admin/ConocenosView.vue')
-        },
+          component: () => import('../views/Admin/ContactoView.vue')
+        }
       ]
     }
   ]
