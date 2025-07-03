@@ -12,22 +12,22 @@ const router = createRouter({
     {
       path: '/nosotros',
       name: 'Nosotros',
-      component: () => import('../views/Admin/NosotrosView.vue')
+      component: () => import('../views/admin/NosotrosView.vue')
     },
     {
       path: '/contacto',
       name: 'Contacto',
-      component: () => import('../views/Admin/ContactoView.vue')
+      component: () => import('../views/admin/ContactoView.vue')
     },
     {
-      path: '/admin',
-      name: 'admin',
+      path: '/Main',
+      name: 'Main',
       component: () => import('../views/admin/AdminLayout.vue'),
       children: [
         {
           path: '',
-          name: 'admin-home',
-          component: () => import('../views/Admin/ContactoView.vue')
+          name: 'Main-home',
+          component: () => import('../views/admin/ContactoView.vue')
         }
       ]
     }

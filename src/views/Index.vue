@@ -1,11 +1,16 @@
 <script setup lang="ts">
 
-import MainNav from '../components/MainNav.vue';
+import AdminNav from '../components/AdminNav.vue';
 </script>
 
 <template>
     <div>
-        <MainNav />
+        <div class="pt-32">
+        <AdminNav />
+        <h1>
+            Admin Dashboard
+        </h1>
+        </div>
     </div>
 </template>
 

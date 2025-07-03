@@ -1,11 +1,12 @@
 <script setup lang="ts">
-    import AdminNav from '@/components/AdminNav.vue';
+    import MainNav from '@/components/MainNav.vue';
 </script>
 
 
 <template>
     <div class="pt-32">
-        <AdminNav />
+        <p>hola mundo</p>
+        <MainNav />
         <RouterView />
     </div>
 </template>
