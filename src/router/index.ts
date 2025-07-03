@@ -20,14 +20,19 @@ const router = createRouter({
       component: () => import('../views/admin/ContactoView.vue')
     },
     {
-      path: '/Main',
-      name: 'Main',
+      path: '/main',
+      name: 'main',
       component: () => import('../views/admin/AdminLayout.vue'),
       children: [
         {
           path: '',
           name: 'Main-home',
           component: () => import('../views/admin/ContactoView.vue')
+        },
+        {
+          path: 'estadisticas',
+          name: 'Estadisticas',
+          component: () => import('../views/admin/EstadisticasView.vue')
         }
       ]
     }

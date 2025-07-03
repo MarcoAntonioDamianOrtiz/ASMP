@@ -1,1 +1,26 @@
 @import "tailwindcss";
+
+
+.custom-green-bg {
+    background-color: #2D8F5F;
+}
+
+.bg-custom-bg {
+    background-color: #F3F7F5;
+}
+
+.mifrase {
+    font-size: 2.6rem;
+    color: #1F6344;
+    font-weight: 600;
+    background-color: #F0F8F4;
+}
+
+.FuncionalidadesPrincipales {
+    font-size: 2.6rem;
+    color: #1F6344;
+    font-weight: 600;
+    margin-top: 2rem;
+    margin-bottom: 2rem;
+    background-color: #F0F8F4;
+}
