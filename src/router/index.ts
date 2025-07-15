@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import Index from '../views/Index.vue'
+import { auth } from '../firebase'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -39,16 +40,30 @@ const router = createRouter({
         {
           path: '',
           name: 'Main-home',
-          component: () => import('../views/admin/ContactoView.vue')
+          component: () => import('../views/admin/ContactoView.vue'),
         },
         {
-          path: 'estadisticas',
+          path: '/estadisticas',
           name: 'Estadisticas',
-          component: () => import('../views/admin/EstadisticasView.vue')
+          component: () => import('../views/admin/EstadisticasView.vue'),
+          meta: {
+            auth: true // Esta ruta requiere autenticación
+          },
         }
       ]
     }
   ]
 })
 
-export default router
+router.beforeEach ((to, from, next) => {
+  if (to.path === '/login' && !auth.currentUser) {
+    next("/index");
+  } else if (
+    to.matched.some((record) => record.meta.auth) && !auth.currentUser
+  ) {
+    next('/login');
+  } else {
+    next();
+  }
+});
+export default router;

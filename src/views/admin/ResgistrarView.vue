@@ -6,26 +6,23 @@ const email = ref("");
 const password = ref("");
 const userStore = useUserStore();
 
-const required = () => {
-    userStore.required(email.value, password.value)
+const register = () => {
+    userStore.requied(email.value, password.value)
         .then(() => {
             console.log("Usuario registrado exitosamente");
-            // Aquí puedes redirigir al usuario a otra página o mostrar un mensaje de éxito
         })
         .catch((error) => {
             console.error("Error al registrar el usuario:", error);
-            // Aquí puedes manejar el error, por ejemplo, mostrar un mensaje de error al usuario
         });
 }
 </script>
 
-
 <template>
   <div class="registrar">
-    <h2>registrar</h2>
-    <form @submit.prevent="required">
+    <h2>Registrar</h2>
+    <form @submit.prevent="register">
       <div class="registrar__input">
-        <input type="email" required  v-model="email" />
+        <input type="email" required v-model="email" />
         <label>Email</label>
       </div>
       <div class="registrar__input">
@@ -33,7 +30,7 @@ const required = () => {
         <label>Password</label>
       </div>
 
-      <button class="registrar__submit" type="submit">registrar</button>
+      <button class="registrar__submit" type="submit">Registrar</button>
     </form>
   </div>
 </template>
@@ -59,7 +56,7 @@ const required = () => {
   position: relative;
 }
 
-.register .registrar__input input {
+.registrar .registrar__input input {
   font-size: 18px;
   width: 100%;
   padding: 10px 0;
@@ -70,6 +67,7 @@ const required = () => {
   outline: none;
   background: transparent;
 }
+
 .registrar .registrar__input label {
   position: absolute;
   top: 0;

@@ -11,25 +11,23 @@ const login = () => {
     userStore.login(email.value, password.value)
         .then(() => {
             console.log("Usuario logueado exitosamente");
-            // Aquí puedes redirigir al usuario a otra página o mostrar un mensaje de éxito
         })
         .catch((error) => {
             console.error("Error al iniciar sesión:", error);
-            // Aquí puedes manejar el error, por ejemplo, mostrar un mensaje de error al usuario
         });
-    };
+};
 </script>
-a
+
 <template>
   <div class="login">
     <h2>Login</h2>
     <form @submit.prevent="login">
       <div class="login__input">
-        <input type="text" required  v-model="email"/>
+        <input type="text" required v-model="email"/>
         <label>Username</label>
       </div>
       <div class="login__input">
-        <input type="password" required  v-model="password"/>
+        <input type="password" required v-model="password"/>
         <label>Password</label>
       </div>
 
@@ -70,6 +68,7 @@ a
   outline: none;
   background: transparent;
 }
+
 .login .login__input label {
   position: absolute;
   top: 0;

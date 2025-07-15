@@ -1,16 +1,16 @@
 import { defineStore } from "pinia";
 import { auth } from "@/firebase";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "firebase/auth";
-import type { IntegerType } from "mongodb";
+
 
 export const useUserStore = defineStore("user", {
     state: () => {
         return {
-            user: null,
+            user: null ,
         };
     },
     actions: {
-        async register(email: string, password: IntegerType) {
+        async requied(email: string, password: string) {
             try {
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
                 this.user = userCredential.user;
@@ -21,18 +21,20 @@ export const useUserStore = defineStore("user", {
                 console.error("Error en registro:", error);
                 switch (error.code) {
                     case "auth/email-already-in-use":
-                        throw new Error("El correo electrónico ya está en uso");
+                        alert("El correo electrónico ya está en uso");
+                        break;
                     case "auth/invalid-email":
-                        throw new Error("El correo electrónico no es válido");
+                        alert("El correo electrónico no es válido");
+                        break;
                     case "auth/weak-password":
-                        throw new Error("La contraseña es demasiado débil");
-                    default:
-                        throw new Error("Error al registrar el usuario");
+                        alert("La contraseña es demasiado débil");
+                        break;
                 }
+                return;
             }
         },
 
-        async login(email: string, password: IntegerType) {
+        async login(email: string, password: string) {
             try {
                 const userCredential = await signInWithEmailAndPassword(auth, email, password);
                 this.user = userCredential.user;
@@ -42,17 +44,14 @@ export const useUserStore = defineStore("user", {
             } catch (error: any) {
                 console.error("Error en login:", error);
                 switch (error.code) {
-                    case "auth/user-not-found":
-                        throw new Error("Usuario no encontrado");
                     case "auth/wrong-password":
-                        throw new Error("Contraseña incorrecta");
+                        alert("Contraseña incorrecta");
+                        break;
                     case "auth/invalid-email":
-                        throw new Error("Correo electrónico no válido");
-                    case "auth/user-disabled":
-                        throw new Error("Usuario deshabilitado");
-                    default:
-                        throw new Error("Error al iniciar sesión");
+                        alert("Correo electrónico no válido");
+                        break;
                 }
+                return;
             }
         },
 
@@ -60,7 +59,7 @@ export const useUserStore = defineStore("user", {
             try {
                 await signOut(auth);
                 this.user = null;
-                this.$router.push({ name: 'Index' });
+                this.$router.push({ name:"/login"});
             } catch (error) {
                 console.error("Error al cerrar sesión:", error);
                 throw new Error("Error al cerrar sesión");
