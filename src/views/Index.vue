@@ -28,14 +28,14 @@ import MainNav from '../components/MainNav.vue';
                         <h2 class="text-2xl font-semibold text-green-800">&lt; 30s</h2>
                         <p class="text-green-800">Tiempo de respuesta</p>
                     </div>
-                    <div class="border-3  border-orange-500 p-6 rounded-lg">
+                    <div class="border-3 border-orange-500 p-6 rounded-lg">
                         <h2 class="text-2xl font-semibold text-green-800">99.9%</h2>
                         <p class="text-green-800">Disponibilidad</p>
                     </div>
                 </div>
                 <!--Funcionalidades Principales-->
                 <h1 class="FuncionalidadesPrincipales">
-                    Funcionalidad Principales
+                    Funcionalidades Principales
                 </h1>
                 <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
                     <div class="border border-white bg-white p-6 rounded-lg">
@@ -74,7 +74,7 @@ import MainNav from '../components/MainNav.vue';
                             restringido por grupos.</p>
                     </div>
                 </div>
-                </div>
             </div>
         </div>
+    </div>
 </template>
