@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { useUserStore } from "@/stores/user";
+import { RouterLink } from "vue-router";
 
+const nombre = ref("");
+const apellidos = ref("");
 const email = ref("");
+const telefono = ref("");
 const password = ref("");
+const showPassword = ref(false);
+
 const userStore = useUserStore();
 
 const register = () => {
-    userStore.requied(email.value, password.value)
+    userStore.register(email.value, password.value)
         .then(() => {
             console.log("Usuario registrado exitosamente");
         })
@@ -18,81 +24,129 @@ const register = () => {
 </script>
 
 <template>
-  <div class="registrar">
-    <h2>Registrar</h2>
-    <form @submit.prevent="register">
-      <div class="registrar__input">
-        <input type="email" required v-model="email" />
-        <label>Email</label>
-      </div>
-      <div class="registrar__input">
-        <input type="password" required v-model="password" />
-        <label>Password</label>
-      </div>
+    <div class="min-h-screen custom-green-bg flex items-center justify-center px-4">
+        <div class="bg-white rounded-3xl shadow-xl p-8 w-full max-w-md">
+            <!-- Header -->
+            <div class="text-center mb-8">
+                <h2 class="text-2xl font-bold text-green-800 mb-2">Seguridad personal</h2>
+                <h3 class="text-lg font-semibold text-gray-700 mb-1">Crear cuenta</h3>
+                <p class="text-sm text-gray-600">Únete a nuestro sistema de seguridad</p>
+            </div>
 
-      <button class="registrar__submit" type="submit">Registrar</button>
-    </form>
-  </div>
+            <!-- Toggle Buttons -->
+            <div class="flex mb-6 bg-gray-100 rounded-lg p-1">
+                <button 
+                    class="flex-1 py-2 px-4 rounded-md bg-green-500 text-white font-medium text-sm transition-all">Guardian
+                </button>
+                <button 
+                    class="flex-1 py-2 px-4 rounded-md text-gray-600 font-medium text-sm transition-all hover:bg-gray-200">Protegido
+                </button>
+            </div>
+
+            <!-- Formulario -->
+            <form @submit.prevent="register" class="space-y-4">
+                <!-- Nombres-->
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="nombre" class="block text-sm font-medium text-gray-700 mb-1">
+                            Nombre
+                        </label>
+                        <input
+                            id="nombre"
+                            type="text"
+                            v-model="nombre"
+                            required
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            placeholder="nombre"/>
+                    </div>
+                    <div>
+                        <label for="apellidos" class="block text-sm font-medium text-gray-700 mb-1">Apellidos
+                        </label>
+                        <input
+                            id="apellidos"
+                            type="text"
+                            v-model="apellidos"
+                            required
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            placeholder="apellidos"/>
+                    </div>
+                </div>
+
+                <!-- Email Input -->
+                <div>
+                    <label for="email" class="block text-sm font-medium text-gray-700 mb-1">
+                        Correo electrónico
+                    </label>
+                    <input
+                        id="email"
+                        type="email"
+                        v-model="email"
+                        required
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        placeholder="utt@correo.com"
+                    />
+                </div>
+
+                <!-- Phone Input -->
+                <div>
+                    <label for="telefono" class="block text-sm font-medium text-gray-700 mb-1">
+                        Teléfono
+                    </label>
+                    <input
+                        id="telefono"
+                        type="tel"
+                        v-model="telefono"
+                        required
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        placeholder="241 123 4567"
+                    />
+                </div>
+
+                <!-- Password Input -->
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-700 mb-1">
+                        Contraseña
+                    </label>
+                    <div class="relative">
+                        <input
+                            id="password"
+                            :type="showPassword ? 'text' : 'password'"
+                            v-model="password"
+                            required
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 pr-10"
+                            placeholder="••••••••"
+                        />
+                        <button
+                            type="button"
+                            @click="showPassword = !showPassword"
+                            class="absolute inset-y-0 right-0 pr-3 flex items-center"
+                        >
+                            <span class="text-gray-500 text-sm">
+                                {{ showPassword ? '👁️' : '👁️‍🗨️' }}
+                            </span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <button
+                    type="submit"
+                    class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors duration-200"
+                >
+                    Iniciar sesión
+                </button>
+            </form>
+
+            <!-- Login Link -->
+            <div class="text-center mt-6">
+                <span class="text-gray-600 text-sm">¿Ya tienes cuenta? </span>
+                <RouterLink 
+                    :to="{ name: 'Login' }" 
+                    class="text-green-600 hover:text-green-700 font-semibold text-sm"
+                >
+                    Inicia sesión aquí
+                </RouterLink>
+            </div>
+        </div>
+    </div>
 </template>
-
-<style>
-.registrar {
-  margin: 100px auto;
-  width: 400px;
-  padding: 40px;
-  background: #282828;
-  box-sizing: border-box;
-  box-shadow: 0 15px 25px rgba(0, 0, 0, 0.6);
-  border-radius: 10px;
-}
-
-.registrar h2 {
-  margin-bottom: 30px;
-  color: #fff;
-  text-align: center;
-}
-
-.registrar .registrar__input {
-  position: relative;
-}
-
-.registrar .registrar__input input {
-  font-size: 18px;
-  width: 100%;
-  padding: 10px 0;
-  color: #fff;
-  margin-bottom: 30px;
-  border: none;
-  border-bottom: 1px solid #fff;
-  outline: none;
-  background: transparent;
-}
-
-.registrar .registrar__input label {
-  position: absolute;
-  top: 0;
-  left: 0;
-  padding: 10px 0;
-  color: #fff;
-  pointer-events: none;
-  transition: 0.5s;
-}
-
-.registrar .registrar__input input:focus ~ label,
-.registrar .registrar__input input:valid ~ label {
-  top: -20px;
-  left: 0;
-  color: #03e9f4;
-  font-size: 12px;
-}
-
-.registrar__submit {
-  color: #1b1c1b;
-  padding: 0.7em 1.7em;
-  font-size: 18px;
-  border-radius: 0.5em;
-  background: #e8e8e8;
-  border: none;
-  cursor: pointer;
-}
-</style>

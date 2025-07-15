@@ -1,22 +1,29 @@
 import { defineStore } from "pinia";
 import { auth } from "@/firebase";
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "firebase/auth";
-
+import {
+    createUserWithEmailAndPassword,
+    signInWithEmailAndPassword,
+    signOut,
+} from "firebase/auth";
+import router from "@/router";
+import type { User } from "firebase/auth";
 
 export const useUserStore = defineStore("user", {
-    state: () => {
-        return {
-            user: null ,
-        };
-    },
+    state: () => ({
+        user: null as User | null,
+    }),
+
     actions: {
-        async requied(email: string, password: string) {
+        async register(email: string, password: string) {
             try {
-                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                const userCredential = await createUserWithEmailAndPassword(
+                    auth,
+                    email,
+                    password
+                );
                 this.user = userCredential.user;
                 console.log("Usuario registrado exitosamente:", this.user);
-                // Redirigir al login después del registro exitoso
-                this.$router.push({ name: 'Login' });
+                router.push({ name: "Login" }); // ✅ Navegación usando router importado
             } catch (error: any) {
                 console.error("Error en registro:", error);
                 switch (error.code) {
@@ -30,17 +37,19 @@ export const useUserStore = defineStore("user", {
                         alert("La contraseña es demasiado débil");
                         break;
                 }
-                return;
             }
         },
 
         async login(email: string, password: string) {
             try {
-                const userCredential = await signInWithEmailAndPassword(auth, email, password);
+                const userCredential = await signInWithEmailAndPassword(
+                    auth,
+                    email,
+                    password
+                );
                 this.user = userCredential.user;
                 console.log("Usuario logueado exitosamente:", this.user);
-                // Redirigir al panel principal después del login exitoso
-                this.$router.push({ name: 'main' });
+                router.push({ name: "main" }); // ✅ Navegación usando router importado
             } catch (error: any) {
                 console.error("Error en login:", error);
                 switch (error.code) {
@@ -51,7 +60,6 @@ export const useUserStore = defineStore("user", {
                         alert("Correo electrónico no válido");
                         break;
                 }
-                return;
             }
         },
 
@@ -59,11 +67,11 @@ export const useUserStore = defineStore("user", {
             try {
                 await signOut(auth);
                 this.user = null;
-                this.$router.push({ name:"/login"});
+                router.push({ name: "Login" });
             } catch (error) {
                 console.error("Error al cerrar sesión:", error);
                 throw new Error("Error al cerrar sesión");
             }
-        }
+        },
     },
 });

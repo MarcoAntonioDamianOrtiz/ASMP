@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { useUserStore } from "@/stores/user";
+import { RouterLink } from "vue-router";
 
 const email = ref("");
 const password = ref("");
+const showPassword = ref(false);
 
 const userStore = useUserStore();
 
@@ -19,81 +21,88 @@ const login = () => {
 </script>
 
 <template>
-  <div class="login">
-    <h2>Login</h2>
-    <form @submit.prevent="login">
-      <div class="login__input">
-        <input type="text" required v-model="email"/>
-        <label>Username</label>
-      </div>
-      <div class="login__input">
-        <input type="password" required v-model="password"/>
-        <label>Password</label>
-      </div>
+    <div class="min-h-screen custom-green-bg flex items-center justify-center px-4">
+        <div class="bg-white rounded-3xl shadow-xl p-8 w-full max-w-md">
+            <!-- Header -->
+            <div class="text-center mb-8">
+                <h2 class="text-2xl font-bold text-green-800 mb-2">Seguridad personal</h2>
+                <h3 class="text-lg font-semibold text-gray-700 mb-1">Crear cuenta</h3>
+                <p class="text-sm text-gray-600">Únete a nuestro sistema de seguridad</p>
+            </div>
+            <!-- Buttons -->
+            <div class="flex mb-6 bg-gray-100 rounded-lg p-1">
+                <button 
+                    class="flex-1 py-2 px-4 rounded-md bg-green-500 text-white font-medium text-sm transition-all">Guardian
+                </button>
+                <button 
+                    class="flex-1 py-2 px-4 rounded-md text-gray-600 font-medium text-sm transition-all hover:bg-gray-200">Protegido
+                </button>
+            </div>
 
-      <button class="login__submit" type="submit">Login</button>
-    </form>
-  </div>
+            <!-- Formulario -->
+            <form @submit.prevent="login" class="space-y-4">
+                <div>
+                    <label for="email" class="block text-sm font-medium text-gray-700 mb-1">
+                        Correo electrónico
+                    </label>
+                    <input
+                        id="email"
+                        type="email"
+                        v-model="email"
+                        required
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        placeholder="utt@correo.com"/>
+                </div>
+
+                <!-- Password -->
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-700 mb-1">
+                        Contraseña
+                    </label>
+                    <div class="relative">
+                        <input
+                            id="password"
+                            :type="showPassword ? 'text' : 'password'"
+                            v-model="password"
+                            required
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 pr-10"
+                            placeholder="Juan1234#"/>
+                        <button
+                            type="button"
+                            @click="showPassword = !showPassword"
+                            class="absolute inset-y-0 right-0 pr-3 flex items-center">
+                            <span class="text-gray-500 text-sm">
+                                {{ showPassword ? '👁️' : '👁️‍🗨️' }}
+                            </span>
+                        </button>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between">
+                    <label class="flex items-center">
+                        <input type="checkbox" class="mr-2 rounded border-gray-300 text-green-600 focus:ring-green-500" />
+                        <span class="text-sm text-gray-600">Recordarme</span>
+                    </label>
+                    <a href="#" class="text-sm text-orange-600 hover:text-orange-700">
+                        ¿Olvidaste tu contraseña?
+                    </a>
+                </div>
+                <button
+                    type="submit"
+                    class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors duration-200">
+                    Iniciar sesión
+                </button>
+            </form>
+
+            <!-- Registrarse -->
+            <div class="text-center mt-6">
+                <span class="text-gray-600 text-sm">¿No tienes cuenta? </span>
+                <RouterLink 
+                    :to="{ name: 'Register' }" 
+                    class="text-green-600 hover:text-green-700 font-semibold text-sm"
+                >
+                    Regístrate aquí
+                </RouterLink>
+            </div>
+        </div>
+    </div>
 </template>
-
-<style>
-.login {
-  margin: 100px auto;
-  width: 400px;
-  padding: 40px;
-  background: #282828;
-  box-sizing: border-box;
-  box-shadow: 0 15px 25px rgba(0, 0, 0, 0.6);
-  border-radius: 10px;
-}
-
-.login h2 {
-  margin-bottom: 30px;
-  color: #fff;
-  text-align: center;
-}
-
-.login .login__input {
-  position: relative;
-}
-
-.login .login__input input {
-  font-size: 18px;
-  width: 100%;
-  padding: 10px 0;
-  color: #fff;
-  margin-bottom: 30px;
-  border: none;
-  border-bottom: 1px solid #fff;
-  outline: none;
-  background: transparent;
-}
-
-.login .login__input label {
-  position: absolute;
-  top: 0;
-  left: 0;
-  padding: 10px 0;
-  color: #fff;
-  pointer-events: none;
-  transition: 0.5s;
-}
-
-.login .login__input input:focus ~ label,
-.login .login__input input:valid ~ label {
-  top: -20px;
-  left: 0;
-  color: #03e9f4;
-  font-size: 12px;
-}
-
-.login__submit {
-  color: #1b1c1b;
-  padding: 0.7em 1.7em;
-  font-size: 18px;
-  border-radius: 0.5em;
-  background: #e8e8e8;
-  border: none;
-  cursor: pointer;
-}
-</style>

@@ -1,7 +1,8 @@
 <template>
     <!-- Footer UTT - Seguridad Personal -->
-    <footer class="bg-slate-800 text-white py-12 mt-16">
+    <footer class="bg-green-950 text-white py-4 mt-2">
         <div class="container mx-auto px-6">
+            <!-- 4 columnas: Universidad, Ubicación, Contacto, Soporte -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
 
                 <!-- Información Universidad -->
@@ -33,14 +34,19 @@
                             <!-- <img src="@/assets/icons/location.png" alt="Ubicación" class="w-5 h-5" /> -->
                             <span class="text-white font-medium">Tlaxcala, México</span>
                         </div>
-                        <div class="text-xs text-gray-300 text-center space-y-1">
+                        <div class="text-xs text-gray-300 text-center space-y-1 mb-2">
                             <p>Universidad Tecnológica de Tlaxcala</p>
-                            <p>Carretera Federal Tlaxcala-Puebla Km 7.5</p>
-                            <p>San Pedro Xalcaltzinco, Tlaxcala</p>
+                            <p>A El Carmen Xalpatlahuaya s/n, 90513 Huamantla, Tlax.</p>
                         </div>
-                        <button class="mt-3 w-full text-xs text-blue-300 hover:text-blue-200 transition-colors">
-                            Ver mapa completo
-                        </button>
+
+                        <!-- Mapa responsivo más pequeño -->
+                        <div class="w-full h-48 rounded overflow-hidden">
+                            <iframe
+                                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3763.594061543322!2d-97.96917432436344!3d19.386722042143607!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x85cffced901ddce7%3A0x900a8087658724ce!2sUniversidad%20Tecnol%C3%B3gica%20de%20Tlaxcala!5e0!3m2!1ses-419!2smx!4v1752564594487!5m2!1ses-419!2smx"
+                                width="100%" height="100%" style="border:0;" loading="lazy"
+                                referrerpolicy="no-referrer-when-downgrade">
+                            </iframe>
+                        </div>
                     </div>
                 </div>
 
@@ -86,7 +92,7 @@
                 </div>
             </div>
 
-            <!-- Copyright -->
+            <!-- Copyright  -->
             <div class="border-t border-gray-600 mt-8 pt-6 text-center">
                 <p class="text-sm text-gray-400">
                     © 2024 Universidad Tecnológica de Tlaxcala - Todos los derechos reservados |
