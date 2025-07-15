@@ -24,8 +24,8 @@ import Logo from './Logo.vue';
                 Contacto
             </RouterLink>
             
-            <Link to="main">
-            Iniciar sesión
+            <Link to="Login">
+                Iniciar sesión
             </Link>
         </nav>
     </header>

@@ -19,6 +19,18 @@ const router = createRouter({
       name: 'Contacto',
       component: () => import('../views/admin/ContactoView.vue')
     },
+    // Rutas de autenticación
+    {
+      path: '/login',
+      name: 'Login',
+      component: () => import('../views/admin/LoginView.vue')
+    },
+    {
+      path: '/register',
+      name: 'Register',
+      component: () => import('../views/admin/ResgistrarView.vue')
+    },
+    // Rutas administrativas protegidas
     {
       path: '/main',
       name: 'main',
