@@ -1,6 +1,6 @@
-import './assets/main.css'; // Ajusta la ruta si es necesario
 import { createApp, markRaw } from 'vue'
 import { createPinia } from 'pinia'
+import './assets/main.css';
 
 import App from './App.vue'
 import router from './router'

@@ -23,7 +23,7 @@ export const useUserStore = defineStore("user", {
                 );
                 this.user = userCredential.user;
                 console.log("Usuario registrado exitosamente:", this.user);
-                router.push({ name: "Login" }); // ✅ Navegación usando router importado
+                router.push({ name: "Login" }); 
             } catch (error: any) {
                 console.error("Error en registro:", error);
                 switch (error.code) {
@@ -49,7 +49,7 @@ export const useUserStore = defineStore("user", {
                 );
                 this.user = userCredential.user;
                 console.log("Usuario logueado exitosamente:", this.user);
-                router.push({ name: "main" }); // ✅ Navegación usando router importado
+                router.push({ name: "main" });
             } catch (error: any) {
                 console.error("Error en login:", error);
                 switch (error.code) {

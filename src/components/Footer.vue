@@ -1,6 +1,6 @@
 <template>
     <!-- Footer UTT - Seguridad Personal -->
-    <footer class="bg-green-950 text-white py-4 mt-2">
+    <footer class="bg-slate-800 text-white py-4">
         <div class="container mx-auto px-6">
             <!-- 4 columnas: Universidad, Ubicación, Contacto, Soporte -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
@@ -8,20 +8,60 @@
                 <!-- Información Universidad -->
                 <div class="space-y-4">
                     <div class="flex items-center gap-3 mb-4">
-                        <!-- <img src="@/assets/logotipo.png" alt="Logo UTT" class="w-12 h-12" /> -->
+                        <img src="@/assets/logotipo.png" alt="Logo UTT" class="w-10 h-10" />
                         <p class="text-sm text-gray-300 leading-relaxed">
                             Universidad Tecnológica de Tlaxcala.
                         </p>
                     </div>
-                    <div class="space-y-2">
+                    <div class="space-y-6">
                         <h4 class="font-semibold text-white">Síguenos en nuestras redes sociales</h4>
-                        <div class="flex gap-3">
+                        <div class="flex gap-4">
                             <!-- Facebook -->
-                            <!-- <img src="@/assets/icons/facebook.png" alt="Facebook" class="w-4 h-4" /> -->
+                            <img src="@/assets/icons/facebook.png" alt="Facebook" class="w-8 h-8 filter invert" />
                             <!-- Instagram -->
-                            <!-- <img src="@/assets/icons/instagram.png" alt="Instagram" class="w-4 h-4" /> -->
+                            <img src="@/assets/icons/instagram.png" alt="Instagram" class="w-8 h-8 filter invert" />
                             <!-- YouTube -->
-                            <!-- <img src="@/assets/icons/youtube.png" alt="YouTube" class="w-4 h-4" /> -->
+                            <img src="@/assets/icons/youtube.png" alt="YouTube" class="w-8 h-8 filter invert" />
+                        </div>
+                    </div>
+                </div>
+                <!-- Información de Contacto -->
+                <div class="space-y-4">
+                    <h3 class="text-lg font-semibold text-white">Contacto</h3>
+                    <div class="space-y-3 text-sm text-gray-300">
+                        <div class="flex items-start gap-2">
+                            <img src="@/assets/icons/phone.png" alt="Teléfono" class="w-6 h-6 mt-0.5 filter invert" />
+                            <span>+52(247) 47-25-300</span>
+                        </div>
+                        <div class="flex items-start gap-2">
+                            <img src="@/assets/icons/email.png" alt="Email" class="w-6 h-6 mt-0.5 filter invert" />
+                            <span>contacto@uttlaxcala.edu.mx</span>
+                        </div>
+                        <div class="flex items-start gap-2">
+                            <img src="@/assets/icons/reloj.png" alt="Horario" class="w-6 h-6 mt-0.5 filter invert" />
+                            <div>
+                                <p>Horario de atención:</p>
+                                <p>Lunes a Viernes de 9:00 a 17:00 horas</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Soporte App -->
+                <div class="space-y-4">
+                    <h3 class="text-lg font-semibold text-white">Soporte App</h3>
+                    <div class="space-y-3 text-sm text-gray-300">
+                        <div class="flex items-center gap-2">
+                            <!-- <img src="@/assets/icons/support-24.png" alt="Soporte 24/7" class="w-4 h-4" /> -->
+                            <span>Centro de Monitoreo: 24/7</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <!-- <img src="@/assets/icons/tech-support.png" alt="Soporte Técnico" class="w-4 h-4" /> -->
+                            <span>Soporte Técnico: 8:00 - 20:00</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <!-- <img src="@/assets/icons/emergency.png" alt="Emergencias" class="w-4 h-4" /> -->
+                            <span>Emergencias: Línea Directa</span>
                         </div>
                     </div>
                 </div>
@@ -49,49 +89,7 @@
                         </div>
                     </div>
                 </div>
-
-                <!-- Información de Contacto -->
-                <div class="space-y-4">
-                    <h3 class="text-lg font-semibold text-white">Contacto</h3>
-                    <div class="space-y-3 text-sm text-gray-300">
-                        <div class="flex items-start gap-2">
-                            <!-- <img src="@/assets/icons/phone.png" alt="Teléfono" class="w-4 h-4 mt-0.5" /> -->
-                            <span>+52(247) 47-25-300</span>
-                        </div>
-                        <div class="flex items-start gap-2">
-                            <!-- <img src="@/assets/icons/email.png" alt="Email" class="w-4 h-4 mt-0.5" /> -->
-                            <span>contacto@uttlaxcala.edu.mx</span>
-                        </div>
-                        <div class="flex items-start gap-2">
-                            <!-- <img src="@/assets/icons/clock.png" alt="Horario" class="w-4 h-4 mt-0.5" /> -->
-                            <div>
-                                <p>Horario de atención:</p>
-                                <p>Lunes a Viernes de 9:00 a 17:00 horas</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Soporte App -->
-                <div class="space-y-4">
-                    <h3 class="text-lg font-semibold text-white">Soporte App</h3>
-                    <div class="space-y-3 text-sm text-gray-300">
-                        <div class="flex items-center gap-2">
-                            <!-- <img src="@/assets/icons/support-24.png" alt="Soporte 24/7" class="w-4 h-4" /> -->
-                            <span>Centro de Monitoreo: 24/7</span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <!-- <img src="@/assets/icons/tech-support.png" alt="Soporte Técnico" class="w-4 h-4" /> -->
-                            <span>Soporte Técnico: 8:00 - 20:00</span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <!-- <img src="@/assets/icons/emergency.png" alt="Emergencias" class="w-4 h-4" /> -->
-                            <span>Emergencias: Línea Directa</span>
-                        </div>
-                    </div>
-                </div>
             </div>
-
             <!-- Copyright  -->
             <div class="border-t border-gray-600 mt-8 pt-6 text-center">
                 <p class="text-sm text-gray-400">

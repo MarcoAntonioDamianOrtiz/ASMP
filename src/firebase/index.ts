@@ -8,13 +8,13 @@ import { getAuth } from "firebase/auth";
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "AIzaSyDB2sm1mia4KRgFjhZeapNtj87gF3w5IAA",
-  authDomain: "vue-authentication-app-ae1e5.firebaseapp.com",
-  projectId: "vue-authentication-app-ae1e5",
-  storageBucket: "vue-authentication-app-ae1e5.firebasestorage.app",
-  messagingSenderId: "444066946293",
-  appId: "1:444066946293:web:0a1bff96f700c1d70b79bc",
-  measurementId: "G-83BFK6XEPK"
+  apiKey: "AIzaSyBrzB7lXrYmcSCPwssx3a1tCj2bG_j4RaA",
+  authDomain: "amsp-4cca7.firebaseapp.com",
+  projectId: "amsp-4cca7",
+  storageBucket: "amsp-4cca7.firebasestorage.app",
+  messagingSenderId: "661304028062",
+  appId: "1:661304028062:web:07d329787d3925983f848f",
+  measurementId: "G-FBXK39FEQ3"
 };
 
 // Initialize Firebase
