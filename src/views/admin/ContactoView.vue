@@ -9,24 +9,12 @@ const email = ref('');
 const telefono = ref('');
 const mensaje = ref('');
 
-const enviarMensaje = () => {
+// Cambia 'YOUR_FORM_ID' por tu ID real de Formspree
+const FORMSPREE_ID = 'xeozleow';
 
-    console.log('Enviando mensaje:', {
-        nombre: nombre.value,
-        apellidos: apellidos.value,
-        email: email.value,
-        telefono: telefono.value,
-        mensaje: mensaje.value
-    });
-    
-    
-    nombre.value = '';
-    apellidos.value = '';
-    email.value = '';
-    telefono.value = '';
-    mensaje.value = '';
-    
-    alert('Mensaje enviado correctamente');
+const enviarMensaje = () => {
+    // El formulario se enviará automáticamente por Formspree
+    console.log('Enviando mensaje a Formspree...');
 };
 </script>
 
@@ -56,13 +44,15 @@ const enviarMensaje = () => {
                         <h3 class="text-2xl font-bold text-gray-800 mb-2">Envíanos un mensaje</h3>
                         <p class="text-gray-600 mb-6">Completa el formulario y te responderemos pronto</p>
                         
-                        <form @submit.prevent="enviarMensaje" class="space-y-4">
+                        <!-- FORMULARIO CON FORMSPREE -->
+                        <form :action="`https://formspree.io/f/${FORMSPREE_ID}`" method="POST" @submit="enviarMensaje" class="space-y-4">
                             <!-- Nombre y Apellidos -->
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm font-medium text-orange-600 mb-2">Nombre *</label>
                                     <input
                                         v-model="nombre"
+                                        name="nombre"
                                         type="text"
                                         required
                                         class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
@@ -73,6 +63,7 @@ const enviarMensaje = () => {
                                     <label class="block text-sm font-medium text-orange-600 mb-2">Apellidos *</label>
                                     <input
                                         v-model="apellidos"
+                                        name="apellidos"
                                         type="text"
                                         required
                                         class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
@@ -87,6 +78,7 @@ const enviarMensaje = () => {
                                     <label class="block text-sm font-medium text-orange-600 mb-2">Email *</label>
                                     <input
                                         v-model="email"
+                                        name="email"
                                         type="email"
                                         required
                                         class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
@@ -97,6 +89,7 @@ const enviarMensaje = () => {
                                     <label class="block text-sm font-medium text-gray-700 mb-2">Teléfono</label>
                                     <input
                                         v-model="telefono"
+                                        name="telefono"
                                         type="tel"
                                         class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
                                         placeholder="241 123 4567"
@@ -109,6 +102,7 @@ const enviarMensaje = () => {
                                 <label class="block text-sm font-medium text-orange-600 mb-2">Mensaje *</label>
                                 <textarea
                                     v-model="mensaje"
+                                    name="mensaje"
                                     required
                                     rows="4"
                                     class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 resize-none"

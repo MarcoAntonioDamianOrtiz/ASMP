@@ -1,10 +1,8 @@
 import { defineStore } from "pinia";
 import { auth } from "@/firebase";
-import {
-    createUserWithEmailAndPassword,
-    signInWithEmailAndPassword,
-    signOut,
-} from "firebase/auth";
+import {createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,} 
+
+from "firebase/auth";
 import router from "@/router";
 import type { User } from "firebase/auth";
 
@@ -62,7 +60,32 @@ export const useUserStore = defineStore("user", {
                 }
             }
         },
-
+        
+        // NUEVA FUNCIÓN: Login con Google
+        async loginWithGoogle() {
+            try {
+                const result = await signInWithPopup(auth, googleProvider);
+                this.user = result.user;
+                console.log("Usuario logueado con Google:", this.user);
+                router.push({ name: "main" });
+            } catch (error: any) {
+                console.error("Error en login con Google:", error);
+                switch (error.code) {
+                    case "auth/popup-closed-by-user":
+                        alert("Popup cerrado por el usuario");
+                        break;
+                    case "auth/popup-blocked":
+                        alert("Popup bloqueado por el navegador");
+                        break;
+                    case "auth/cancelled-popup-request":
+                        alert("Solicitud de popup cancelada");
+                        break;
+                    default:
+                        alert("Error al iniciar sesión con Google");
+                }
+            }
+        },
+        
         async logout() {
             try {
                 await signOut(auth);

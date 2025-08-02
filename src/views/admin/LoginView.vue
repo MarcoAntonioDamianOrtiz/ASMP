@@ -29,6 +29,11 @@ const login = () => {
                 <h3 class="text-lg font-semibold text-gray-700 mb-1">Crear cuenta</h3>
                 <p class="text-sm text-gray-600">Únete a nuestro sistema de seguridad</p>
             </div>
+            
+
+
+
+
             <!-- Buttons -->
             <div class="flex mb-6 bg-gray-100 rounded-lg p-1">
                 <button 
@@ -92,6 +97,8 @@ const login = () => {
                     Iniciar sesión
                 </button>
             </form>
+
+
 
             <!-- Registrarse -->
             <div class="text-center mt-6">
