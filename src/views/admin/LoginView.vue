@@ -6,8 +6,14 @@ import { RouterLink } from "vue-router";
 const email = ref("");
 const password = ref("");
 const showPassword = ref(false);
+const selectedRole = ref<'guardian' | 'protegido'>('guardian');
 
 const userStore = useUserStore();
+
+const selectRole = (role: 'guardian' | 'protegido') => {
+    selectedRole.value = role;
+    userStore.setCurrentRole(role);
+};
 
 const login = () => {
     userStore.login(email.value, password.value)
@@ -18,7 +24,6 @@ const login = () => {
             console.error("Error al iniciar sesión:", error);
         });
 };
-
 
 const loginWithGoogle = () => {
     userStore.loginWithGoogle()
@@ -37,22 +42,44 @@ const loginWithGoogle = () => {
             <!-- Header -->
             <div class="text-center mb-8">
                 <h2 class="text-2xl font-bold text-green-800 mb-2">Seguridad personal</h2>
-                <h3 class="text-lg font-semibold text-gray-700 mb-1">Crear cuenta</h3>
-                <p class="text-sm text-gray-600">Únete a nuestro sistema de seguridad</p>
+                <h3 class="text-lg font-semibold text-gray-700 mb-1">Iniciar sesión</h3>
+                <p class="text-sm text-gray-600">Accede a tu sistema de seguridad</p>
             </div>
             
-
-
-
-
-            <!-- Buttons -->
-            <div class="flex mb-6 bg-gray-100 rounded-lg p-1">
+            <!-- Toggle Buttons -->
+            <div class="flex mb-4 bg-gray-100 rounded-lg p-1">
                 <button 
-                    class="flex-1 py-2 px-4 rounded-md bg-green-500 text-white font-medium text-sm transition-all">Guardian
+                    @click="selectRole('guardian')"
+                    :class="[
+                        'flex-1 py-2 px-4 rounded-md font-medium text-sm transition-all',
+                        selectedRole === 'guardian' 
+                            ? 'bg-green-500 text-white' 
+                            : 'text-gray-600 hover:bg-gray-200'
+                    ]"
+                >
+                    Guardian
                 </button>
                 <button 
-                    class="flex-1 py-2 px-4 rounded-md text-gray-600 font-medium text-sm transition-all hover:bg-gray-200">Protegido
+                    @click="selectRole('protegido')"
+                    :class="[
+                        'flex-1 py-2 px-4 rounded-md font-medium text-sm transition-all',
+                        selectedRole === 'protegido' 
+                            ? 'bg-green-500 text-white' 
+                            : 'text-gray-600 hover:bg-gray-200'
+                    ]"
+                >
+                    Protegido
                 </button>
+            </div>
+
+            <!-- Mensaje informativo según rol -->
+            <div class="mb-6 p-3 rounded-lg" :class="selectedRole === 'guardian' ? 'bg-blue-50 border border-blue-200' : 'bg-orange-50 border border-orange-200'">
+                <div v-if="selectedRole === 'guardian'" class="text-sm text-blue-800">
+                    <strong>Acceso Guardian:</strong> Panel de administración completo con estadísticas y monitoreo.
+                </div>
+                <div v-else class="text-sm text-orange-800">
+                    <strong>Control parental activado:</strong> Las cuentas de los protegidos requieren supervisión parental y tienen funcionalidades limitadas por seguridad.
+                </div>
             </div>
 
             <!-- Formulario -->
@@ -67,7 +94,7 @@ const loginWithGoogle = () => {
                         v-model="email"
                         required
                         class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                        placeholder="utt@correo.com"/>
+                        placeholder="tu@correo.com"/>
                 </div>
 
                 <!-- Password -->
@@ -82,7 +109,7 @@ const loginWithGoogle = () => {
                             v-model="password"
                             required
                             class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 pr-10"
-                            placeholder="Juan1234#"/>
+                            placeholder="••••••••"/>
                         <button
                             type="button"
                             @click="showPassword = !showPassword"

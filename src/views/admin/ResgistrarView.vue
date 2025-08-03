@@ -9,11 +9,23 @@ const email = ref("");
 const telefono = ref("");
 const password = ref("");
 const showPassword = ref(false);
+const selectedRole = ref<'guardian' | 'protegido'>('guardian');
 
 const userStore = useUserStore();
 
+const selectRole = (role: 'guardian' | 'protegido') => {
+    selectedRole.value = role;
+    userStore.setCurrentRole(role);
+};
+
 const register = () => {
-    userStore.register(email.value, password.value)
+    const userData = {
+        nombre: nombre.value,
+        apellidos: apellidos.value,
+        telefono: telefono.value,
+    };
+    
+    userStore.register(email.value, password.value, userData)
         .then(() => {
             console.log("Usuario registrado exitosamente");
         })
@@ -34,13 +46,39 @@ const register = () => {
             </div>
 
             <!-- Toggle Buttons -->
-            <div class="flex mb-6 bg-gray-100 rounded-lg p-1">
+            <div class="flex mb-4 bg-gray-100 rounded-lg p-1">
                 <button 
-                    class="flex-1 py-2 px-4 rounded-md bg-green-500 text-white font-medium text-sm transition-all">Guardian
+                    @click="selectRole('guardian')"
+                    :class="[
+                        'flex-1 py-2 px-4 rounded-md font-medium text-sm transition-all',
+                        selectedRole === 'guardian' 
+                            ? 'bg-green-500 text-white' 
+                            : 'text-gray-600 hover:bg-gray-200'
+                    ]"
+                >
+                    Guardian
                 </button>
                 <button 
-                    class="flex-1 py-2 px-4 rounded-md text-gray-600 font-medium text-sm transition-all hover:bg-gray-200">Protegido
+                    @click="selectRole('protegido')"
+                    :class="[
+                        'flex-1 py-2 px-4 rounded-md font-medium text-sm transition-all',
+                        selectedRole === 'protegido' 
+                            ? 'bg-green-500 text-white' 
+                            : 'text-gray-600 hover:bg-gray-200'
+                    ]"
+                >
+                    Protegido
                 </button>
+            </div>
+
+            <!-- Mensaje informativo según rol -->
+            <div class="mb-6 p-3 rounded-lg" :class="selectedRole === 'guardian' ? 'bg-blue-50 border border-blue-200' : 'bg-orange-50 border border-orange-200'">
+                <div v-if="selectedRole === 'guardian'" class="text-sm text-blue-800">
+                    <strong>Modo Guardian:</strong> Podrás monitorear y proteger a familiares. Tendrás acceso completo a estadísticas y configuraciones.
+                </div>
+                <div v-else class="text-sm text-orange-800">
+                    <strong>Control parental activado:</strong> Las cuentas de los protegidos requieren supervisión parental y tienen funcionalidades limitadas por seguridad.
+                </div>
             </div>
 
             <!-- Formulario -->
@@ -57,7 +95,7 @@ const register = () => {
                             v-model="nombre"
                             required
                             class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                            placeholder="nombre"/>
+                            placeholder="Tu nombre"/>
                     </div>
                     <div>
                         <label for="apellidos" class="block text-sm font-medium text-gray-700 mb-1">Apellidos
@@ -68,7 +106,7 @@ const register = () => {
                             v-model="apellidos"
                             required
                             class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                            placeholder="apellidos"/>
+                            placeholder="Tus apellidos"/>
                     </div>
                 </div>
 
@@ -83,7 +121,7 @@ const register = () => {
                         v-model="email"
                         required
                         class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                        placeholder="utt@correo.com"
+                        placeholder="tu@correo.com"
                     />
                 </div>
 
@@ -133,7 +171,7 @@ const register = () => {
                     type="submit"
                     class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors duration-200"
                 >
-                    Iniciar sesión
+                    Crear cuenta
                 </button>
             </form>
 
