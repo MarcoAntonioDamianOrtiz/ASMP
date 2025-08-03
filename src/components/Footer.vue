@@ -35,7 +35,7 @@
                         </div>
                         <div class="flex items-start gap-2">
                             <img src="@/assets/icons/email.png" alt="Email" class="w-6 h-6 mt-0.5 filter invert" />
-                            <span>contacto@uttlaxcala.edu.mx</span>
+                            <span>universidadtecnologica213@gmail.com</span>
                         </div>
                         <div class="flex items-start gap-2">
                             <img src="@/assets/icons/reloj.png" alt="Horario" class="w-6 h-6 mt-0.5 filter invert" />

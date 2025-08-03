@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
-import { auth } from "@/firebase";
-import {createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,} 
+import { auth, googleProvider  } from "@/firebase";
+import {createUserWithEmailAndPassword,signInWithEmailAndPassword,signInWithPopup,signOut,} 
 
 from "firebase/auth";
 import router from "@/router";
@@ -61,7 +61,7 @@ export const useUserStore = defineStore("user", {
             }
         },
         
-        // NUEVA FUNCIÓN: Login con Google
+        // Login con Google
         async loginWithGoogle() {
             try {
                 const result = await signInWithPopup(auth, googleProvider);

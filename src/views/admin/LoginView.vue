@@ -18,6 +18,17 @@ const login = () => {
             console.error("Error al iniciar sesión:", error);
         });
 };
+
+
+const loginWithGoogle = () => {
+    userStore.loginWithGoogle()
+        .then(() => {
+            console.log("Usuario logueado con Google exitosamente");
+        })
+        .catch((error) => {
+            console.error("Error al iniciar sesión con Google:", error);
+        });
+};
 </script>
 
 <template>
@@ -97,8 +108,22 @@ const login = () => {
                     Iniciar sesión
                 </button>
             </form>
+            
+            <!-- Linea -->
+            <div class="flex items-center my-6">
+                <div class="flex-1 border-t border-gray-300"></div>
+                <span class="px-4 text-sm text-gray-500">o</span>
+                <div class="flex-1 border-t border-gray-300"></div>
+            </div>
 
-
+            <!-- Botón de Google -->
+            <button
+                @click="loginWithGoogle"
+                type="button"
+                class="w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-semibold py-2 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2">
+                <img src="https://developers.google.com/identity/images/g-logo.png" alt="Google" class="w-5 h-5" />
+                Continuar con Google
+            </button>
 
             <!-- Registrarse -->
             <div class="text-center mt-6">

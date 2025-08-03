@@ -30,7 +30,7 @@ import LayoutView from './LayoutView.vue';
                         <div class="border border-gray-200 bg-white p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow">
                             <div class="flex items-center mb-4">
                                 <div class="bg-red-100 rounded-full p-3 mr-4">
-                                    <img src="@/assets/icons/diana.png" alt="Misión" class="w-8 h-8" />
+                                    <img src="@/assets/icons/diana.png" alt="Misión" class="w-12 h-12" />
                                 </div>
                                 <h3 class="text-xl font-bold text-green-600">Nuestra misión</h3>
                             </div>
@@ -44,7 +44,7 @@ import LayoutView from './LayoutView.vue';
                         <div class="border border-gray-200 bg-white p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow">
                             <div class="flex items-center mb-4">
                                 <div class="bg-blue-100 rounded-full p-3 mr-4">
-                                    <img src="@/assets/icons/vision.png" alt="Visión" class="w-8 h-8" />
+                                    <img src="@/assets/icons/vision.png" alt="Visión" class="w-12 h-12" />
                                 </div>
                                 <h3 class="text-xl font-bold text-green-600">Nuestra visión</h3>
                             </div>
@@ -58,7 +58,7 @@ import LayoutView from './LayoutView.vue';
                     <!-- Nuestros Valores -->
                     <div class="mb-12">
                         <div class="flex items-center justify-center mb-8">
-                            <!-- <img src="@/assets/icons/corazon.png" alt="Valores" class="w-8 h-8 mr-3" /> -->
+                            <img src="@/assets/icons/corazon.png" alt="Valores" class="w-12 h-12 mr-3" />
                             <h3 class="text-2xl font-bold text-green-600">Nuestros valores</h3>
                         </div>
 
@@ -67,7 +67,7 @@ import LayoutView from './LayoutView.vue';
                             <div class="border border-gray-200 bg-white p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow">
                                 <div
                                     class="bg-blue-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
-                                    <!-- <img src="@/assets/icons/confianza.png" alt="Confianza" class="w-8 h-8" /> -->
+                                    <img src="@/assets/icons/confianza.png" alt="Confianza" class="w-12 h-12" />
                                 </div>
                                 <h4 class="text-lg font-semibold text-green-600 mb-3">Confianza</h4>
                                 <p class="text-sm text-gray-600">
@@ -79,7 +79,7 @@ import LayoutView from './LayoutView.vue';
                             <div class="border border-gray-200 bg-white p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow">
                                 <div
                                     class="bg-yellow-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
-                                    <!-- <img src="@/assets/icons/innovacion.png" alt="Innovación" class="w-8 h-8" /> -->
+                                    <img src="@/assets/icons/innovacion.png" alt="Innovación" class="w-12 h-12" />
                                 </div>
                                 <h4 class="text-lg font-semibold text-green-600 mb-3">Innovación</h4>
                                 <p class="text-sm text-gray-600">
@@ -91,7 +91,7 @@ import LayoutView from './LayoutView.vue';
                             <div class="border border-gray-200 bg-white p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow">
                                 <div
                                     class="bg-green-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
-                                    <!-- <img src="@/assets/icons/comunidad.png" alt="Comunidad" class="w-8 h-8" /> -->
+                                    <img src="@/assets/icons/comunidad.png" alt="Comunidad" class="w-12 h-12" />
                                 </div>
                                 <h4 class="text-lg font-semibold text-green-600 mb-3">Comunidad</h4>
                                 <p class="text-sm text-gray-600">
@@ -104,7 +104,7 @@ import LayoutView from './LayoutView.vue';
                     <!-- Nuestro Equipo -->
                     <div>
                         <div class="flex items-center mb-8">
-                            <!-- <img src="@/assets/icons/equipo.png" alt="Equipo" class="w-8 h-8 mr-3" /> -->
+                            <img src="@/assets/icons/equipo.png" alt="Equipo" class="w-12 h-12 mr-3" />
                             <h3 class="text-2xl font-bold text-green-600">Nuestro Equipo</h3>
                         </div>
 

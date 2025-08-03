@@ -29,7 +29,7 @@ const enviarMensaje = () => {
                 <div class="bg-white rounded-3xl shadow-lg p-8 text-center mb-8">
                     <div class="flex justify-center mb-4">
                         <div class="bg-green-100 rounded-full p-4">
-                            <!-- <img src="@/assets/icons/ayuda.png" alt="Ayuda" class="w-12 h-12" /> -->
+                            <img src="@/assets/icons/ayuda.png" alt="Ayuda" class="w-20 h-20" />
                         </div>
                     </div>
                     <h2 class="text-2xl font-bold text-gray-800 mb-2">¿Necesitas ayuda?</h2>
@@ -128,7 +128,7 @@ const enviarMensaje = () => {
                             <!-- Correo principal -->
                             <div class="bg-gray-100 rounded-lg p-4">
                                 <p class="text-sm text-gray-600 mb-1">Correo principal</p>
-                                <p class="text-green-600 font-medium">contacto@utseguard.com</p>
+                                <p class="text-green-600 font-medium">universidadtecnologica213@gmail.com</p>
                             </div>
 
                             <!-- Teléfono -->
@@ -165,7 +165,7 @@ const enviarMensaje = () => {
                                         <span class="text-gray-700">Domingos:</span>
                                         <span class="text-gray-900 font-medium">Emergencias únicamente</span>
                                     </div>
-                                    <div class="flex justify-between border-t pt-2 mt-2">
+                                    <div class="flex justify-between ">
                                         <span class="text-gray-700">Chat en vivo:</span>
                                         <span class="text-green-600 font-medium">24/7</span>
                                     </div>
