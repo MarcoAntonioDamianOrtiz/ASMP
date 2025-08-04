@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { auth, googleProvider } from "@/firebase";
+import { auth, googleProvider, createUser, getUserByEmail } from "@/firebase/index";
 import {
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
@@ -25,6 +25,7 @@ export const useUserStore = defineStore("user", {
         user: null as User | null,
         userProfile: null as UserProfile | null,
         currentRole: 'guardian' as 'guardian' | 'protegido',
+        loading: false,
     }),
 
     getters: {
@@ -34,11 +35,26 @@ export const useUserStore = defineStore("user", {
     },
 
     actions: {
-        // Inicializar listener de autenticación
         initAuthListener() {
-            onAuthStateChanged(auth, (user) => {
+            onAuthStateChanged(auth, async (user) => {
                 this.user = user;
-                if (!user) {
+                if (user && user.email) {
+                    try {
+                        const firebaseUser = await getUserByEmail(user.email);
+                        if (firebaseUser) {
+                            this.userProfile = {
+                                uid: user.uid,
+                                email: user.email,
+                                displayName: user.displayName || firebaseUser.name,
+                                role: firebaseUser.role,
+                                nombre: firebaseUser.name,
+                                telefono: firebaseUser.phone,
+                            };
+                        }
+                    } catch (error) {
+                        console.error("Error cargando perfil:", error);
+                    }
+                } else {
                     this.userProfile = null;
                 }
             });
@@ -54,13 +70,20 @@ export const useUserStore = defineStore("user", {
             telefono: string;
         }) {
             try {
-                const userCredential = await createUserWithEmailAndPassword(
-                    auth,
-                    email,
-                    password
-                );
-                this.user = userCredential.user;
+                this.loading = true;
+                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
                 
+                // Crear usuario en Firestore
+                await createUser({
+                    email: email,
+                    name: `${userData.nombre} ${userData.apellidos}`,
+                    phone: userData.telefono,
+                    role: this.currentRole,
+                    status: 'online',
+                    location: 'UTT Campus',
+                    coordinates: [-97.9691, 19.3867]
+                });
+
                 this.userProfile = {
                     uid: userCredential.user.uid,
                     email: email,
@@ -70,8 +93,6 @@ export const useUserStore = defineStore("user", {
                     telefono: userData.telefono,
                 };
 
-                console.log("Usuario registrado exitosamente:", this.userProfile);
-                
                 if (this.currentRole === 'guardian') {
                     router.push({ name: "Estadisticas" });
                 } else {
@@ -80,61 +101,84 @@ export const useUserStore = defineStore("user", {
             } catch (error: any) {
                 console.error("Error en registro:", error);
                 this.handleAuthError(error);
+            } finally {
+                this.loading = false;
             }
         },
 
         async login(email: string, password: string) {
             try {
-                const userCredential = await signInWithEmailAndPassword(
-                    auth,
-                    email,
-                    password
-                );
-                this.user = userCredential.user;
+                this.loading = true;
+                const userCredential = await signInWithEmailAndPassword(auth, email, password);
                 
-                // Crear perfil simple para el login
-                this.userProfile = {
-                    uid: userCredential.user.uid,
-                    email: email,
-                    role: this.currentRole,
-                };
-
-                console.log("Usuario logueado exitosamente:", this.userProfile);
-                
-                // Redirigir según el rol seleccionado
-                if (this.currentRole === 'guardian') {
-                    router.push({ name: "Estadisticas" });
+                const firebaseUser = await getUserByEmail(email);
+                if (firebaseUser) {
+                    this.userProfile = {
+                        uid: userCredential.user.uid,
+                        email: email,
+                        role: firebaseUser.role,
+                        nombre: firebaseUser.name,
+                        telefono: firebaseUser.phone,
+                    };
+                    
+                    if (firebaseUser.role === 'guardian') {
+                        router.push({ name: "Estadisticas" });
+                    } else {
+                        router.push({ name: "Index" });
+                    }
                 } else {
-                    router.push({ name: "Index" });
+                    alert("Usuario no encontrado en la base de datos");
                 }
             } catch (error: any) {
                 console.error("Error en login:", error);
                 this.handleAuthError(error);
+            } finally {
+                this.loading = false;
             }
         },
         
         async loginWithGoogle() {
             try {
+                this.loading = true;
                 const result = await signInWithPopup(auth, googleProvider);
-                this.user = result.user;
                 
-                this.userProfile = {
-                    uid: result.user.uid,
-                    email: result.user.email || '',
-                    displayName: result.user.displayName || '',
-                    role: this.currentRole,
-                };
-
-                console.log("Usuario logueado con Google:", this.userProfile);
+                let firebaseUser = await getUserByEmail(result.user.email!);
                 
-                if (this.currentRole === 'guardian') {
-                    router.push({ name: "Estadisticas" });
-                } else {
-                    router.push({ name: "Index" });
+                if (!firebaseUser) {
+                    await createUser({
+                        email: result.user.email!,
+                        name: result.user.displayName || 'Usuario Google',
+                        phone: '000-000-0000',
+                        role: this.currentRole,
+                        status: 'online',
+                        location: 'UTT Campus',
+                        coordinates: [-97.9691, 19.3867]
+                    });
+                    
+                    firebaseUser = await getUserByEmail(result.user.email!);
+                }
+                
+                if (firebaseUser) {
+                    this.userProfile = {
+                        uid: result.user.uid,
+                        email: result.user.email!,
+                        displayName: result.user.displayName || '',
+                        role: firebaseUser.role,
+                        nombre: firebaseUser.name,
+                        telefono: firebaseUser.phone,
+                    };
+                    
+                    if (firebaseUser.role === 'guardian') {
+                        router.push({ name: "Estadisticas" });
+                    } else {
+                        router.push({ name: "Index" });
+                    }
                 }
             } catch (error: any) {
-                console.error("Error en login con Google:", error);
+                console.error("Error con Google:", error);
                 this.handleAuthError(error);
+            } finally {
+                this.loading = false;
             }
         },
         
@@ -146,25 +190,22 @@ export const useUserStore = defineStore("user", {
                 router.push({ name: "Index" });
             } catch (error) {
                 console.error("Error al cerrar sesión:", error);
-                alert("Error al cerrar sesión");
             }
         },
 
         handleAuthError(error: any) {
             switch (error.code) {
                 case "auth/invalid-credential":
-                case "auth/wrong-password":
-                case "auth/user-not-found":
                     alert("Credenciales incorrectas");
                     break;
-                case "auth/invalid-email":
-                    alert("Correo electrónico no válido");
+                case "auth/weak-password":
+                    alert("La contraseña debe tener al menos 6 caracteres");
                     break;
-                case "auth/too-many-requests":
-                    alert("Demasiados intentos. Intenta más tarde");
+                case "auth/email-already-in-use":
+                    alert("Este correo ya está registrado");
                     break;
                 default:
-                    alert("Error de autenticación:contraseña debil agrega numeros y palabras ");
+                    alert("Error: " + (error.message || "Error desconocido"));
             }
         },
     },
