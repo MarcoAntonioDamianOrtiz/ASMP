@@ -52,7 +52,6 @@ const logout = () => {
             
             <div v-else class="flex items-center space-x-3">
                 <span class="text-sm text-gray-600">
-                    {{ userEmail }}
                 </span>
                 <button 
                     @click="logout"
