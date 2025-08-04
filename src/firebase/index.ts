@@ -12,7 +12,9 @@ import {
   onSnapshot,
   updateDoc,
   arrayUnion,
-  arrayRemove
+  arrayRemove,
+  orderBy,
+  limit as limitToLast
 } from "firebase/firestore";
 
 // Tu configuración de Firebase
@@ -68,6 +70,21 @@ export interface FirebaseAlert {
   resolved: boolean;
 }
 
+// Nueva interfaz para ubicaciones
+export interface FirebaseUbicacion {
+  id: string;
+  userId: string;
+  userEmail: string;
+  userName: string;
+  coordinates: [number, number]; // [longitude, latitude]
+  accuracy?: number; // precisión del GPS
+  timestamp: Date;
+  address?: string; // dirección legible
+  speed?: number; // velocidad si está disponible
+  heading?: number; // dirección si está disponible
+  altitude?: number; // altitud si está disponible
+}
+
 // Funciones básicas de usuarios
 export const getUsers = async (): Promise<FirebaseUser[]> => {
   try {
@@ -105,7 +122,143 @@ export const createUser = async (userData: Omit<FirebaseUser, 'id'>): Promise<st
   }
 };
 
-// Funciones de grupos
+// Funciones para manejar ubicaciones
+export const createUbicacion = async (ubicacionData: Omit<FirebaseUbicacion, 'id'>): Promise<string> => {
+  try {
+    const docRef = await addDoc(collection(db, 'ubicaciones'), {
+      ...ubicacionData,
+      timestamp: new Date()
+    });
+    return docRef.id;
+  } catch (error) {
+    console.error('Error creating ubicacion:', error);
+    throw error;
+  }
+};
+
+export const getUbicaciones = async (limitCount: number = 100): Promise<FirebaseUbicacion[]> => {
+  try {
+    const q = query(
+      collection(db, 'ubicaciones'), 
+      orderBy('timestamp', 'desc'),
+      limitToLast(limitCount)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FirebaseUbicacion));
+  } catch (error) {
+    console.error('Error getting ubicaciones:', error);
+    return [];
+  }
+};
+
+export const getUbicacionesByUser = async (userEmail: string, limitCount: number = 50): Promise<FirebaseUbicacion[]> => {
+  try {
+    const q = query(
+      collection(db, 'ubicaciones'),
+      where('userEmail', '==', userEmail),
+      orderBy('timestamp', 'desc'),
+      limitToLast(limitCount)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FirebaseUbicacion));
+  } catch (error) {
+    console.error('Error getting user ubicaciones:', error);
+    return [];
+  }
+};
+
+export const getLatestUbicaciones = async (): Promise<FirebaseUbicacion[]> => {
+  try {
+    // Obtener la ubicación más reciente de cada usuario
+    const ubicacionesSnapshot = await getDocs(collection(db, 'ubicaciones'));
+    const ubicacionesMap = new Map<string, FirebaseUbicacion>();
+
+    ubicacionesSnapshot.docs.forEach(doc => {
+      const ubicacion = { id: doc.id, ...doc.data() } as FirebaseUbicacion;
+      const existing = ubicacionesMap.get(ubicacion.userEmail);
+      
+      if (!existing || new Date(ubicacion.timestamp) > new Date(existing.timestamp)) {
+        ubicacionesMap.set(ubicacion.userEmail, ubicacion);
+      }
+    });
+
+    return Array.from(ubicacionesMap.values());
+  } catch (error) {
+    console.error('Error getting latest ubicaciones:', error);
+    return [];
+  }
+};
+
+// Función para actualizar la ubicación de un usuario
+export const updateUserLocation = async (
+  userEmail: string, 
+  coordinates: [number, number], 
+  additionalData?: Partial<FirebaseUbicacion>
+): Promise<string> => {
+  try {
+    // Obtener datos del usuario
+    const user = await getUserByEmail(userEmail);
+    if (!user) {
+      throw new Error('Usuario no encontrado');
+    }
+
+    // Crear nueva ubicación
+    const ubicacionData: Omit<FirebaseUbicacion, 'id'> = {
+      userId: user.id,
+      userEmail: userEmail,
+      userName: user.name,
+      coordinates,
+      timestamp: new Date(),
+      ...additionalData
+    };
+
+    return await createUbicacion(ubicacionData);
+  } catch (error) {
+    console.error('Error updating user location:', error);
+    throw error;
+  }
+};
+
+// Listeners en tiempo real para ubicaciones
+export const subscribeToUbicaciones = (callback: (ubicaciones: FirebaseUbicacion[]) => void) => {
+  return onSnapshot(
+    query(collection(db, 'ubicaciones'), orderBy('timestamp', 'desc')),
+    (snapshot) => {
+      const ubicaciones = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FirebaseUbicacion));
+      callback(ubicaciones);
+    },
+    (error) => {
+      console.error('Error in ubicaciones subscription:', error);
+    }
+  );
+};
+
+// Listener para ubicaciones más recientes por usuario
+export const subscribeToLatestUbicaciones = (callback: (ubicaciones: FirebaseUbicacion[]) => void) => {
+  return onSnapshot(
+    collection(db, 'ubicaciones'),
+    (snapshot) => {
+      const ubicacionesMap = new Map<string, FirebaseUbicacion>();
+
+      snapshot.docs.forEach(doc => {
+        const ubicacion = { id: doc.id, ...doc.data() } as FirebaseUbicacion;
+        const existing = ubicacionesMap.get(ubicacion.userEmail);
+        
+        if (!existing || new Date(ubicacion.timestamp) > new Date(existing.timestamp)) {
+          ubicacionesMap.set(ubicacion.userEmail, ubicacion);
+        }
+      });
+
+      const latestUbicaciones = Array.from(ubicacionesMap.values());
+      callback(latestUbicaciones);
+    },
+    (error) => {
+      console.error('Error in latest ubicaciones subscription:', error);
+    }
+  );
+};
+
+// Funciones de grupos (mantenidas como estaban)
 export const getGroups = async (): Promise<FirebaseGroup[]> => {
   try {
     const snapshot = await getDocs(collection(db, 'circulos'));
@@ -167,7 +320,7 @@ export const removeMemberFromGroup = async (groupId: string, userEmail: string):
   }
 };
 
-// Funciones de alertas
+// Funciones de alertas (mantenidas como estaban)
 export const createAlert = async (alertData: Omit<FirebaseAlert, 'id'>): Promise<string> => {
   try {
     const docRef = await addDoc(collection(db, 'alerts'), {
@@ -205,7 +358,7 @@ export const resolveAlert = async (alertId: string): Promise<void> => {
   }
 };
 
-// Listeners en tiempo real
+// Listeners en tiempo real (mantenidos como estaban)
 export const subscribeToUsers = (callback: (users: FirebaseUser[]) => void) => {
   return onSnapshot(collection(db, 'users'), (snapshot) => {
     const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FirebaseUser));
