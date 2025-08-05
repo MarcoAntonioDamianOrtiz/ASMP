@@ -13,8 +13,6 @@ import {
   updateDoc,
   arrayUnion,
   arrayRemove,
-  orderBy,
-  limit,
   setDoc,
   getDoc
 } from "firebase/firestore";
