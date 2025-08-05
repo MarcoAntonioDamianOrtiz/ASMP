@@ -14,7 +14,7 @@ import {
   arrayUnion,
   arrayRemove,
   setDoc,
-  getDoc
+  getDoc,
 } from "firebase/firestore";
 
 // Tu configuración de Firebase
@@ -424,8 +424,8 @@ export const getGroupMembersLocations = async (groupId: string): Promise<Firebas
       if (user) {
         const locationDoc = await getDoc(doc(db, 'user_locations', user.id));
         if (locationDoc.exists()) {
-          locations.push({ id: locationDoc.id, ...locationDoc.data() } as FirebaseUserLocation);
-        }
+        locations.push({ id: locationDoc.id, ...locationDoc.data() } as FirebaseUserLocation);
+}
       }
     }
 
@@ -441,8 +441,9 @@ export const getMyLocation = async (userId: string): Promise<FirebaseUserLocatio
   try {
     const locationDoc = await getDoc(doc(db, 'user_locations', userId));
     if (locationDoc.exists()) {
-      return { id: locationDoc.id, ...locationDoc.data() } as FirebaseUserLocation;
-    }
+    return { id: locationDoc.id, ...locationDoc.data() } as FirebaseUserLocation;
+}
+
     return null;
   } catch (error) {
     console.error('Error getting my location:', error);
@@ -521,10 +522,11 @@ export const subscribeToGroupLocations = (groupId: string, callback: (locations:
 export const subscribeToMyLocation = (userId: string, callback: (location: FirebaseUserLocation | null) => void) => {
   return onSnapshot(doc(db, 'user_locations', userId), (snapshot) => {
     if (snapshot.exists()) {
-      callback({ id: snapshot.id, ...snapshot.data() } as FirebaseUserLocation);
-    } else {
-      callback(null);
-    }
+    callback({ id: snapshot.id, ...snapshot.data() } as FirebaseUserLocation);
+  } else {
+    callback(null);
+}
+
   }, (error) => {
     console.error('Error in my location subscription:', error);
   });
@@ -558,4 +560,36 @@ export const subscribeToAlerts = (callback: (alerts: FirebaseAlert[]) => void) =
       console.error('Error in alerts subscription:', error);
     }
   );
+};
+
+export const deleteUserGroup = async (groupId: string, userEmail: string): Promise<void> => {
+  try {
+    // Verificar que el usuario sea el creador del grupo
+    const groupDoc = await getDoc(doc(db, 'circulos', groupId));
+    if (!groupDoc.exists()) {
+      throw new Error('El grupo no existe');
+    }
+    
+    const groupData = groupDoc.data() as FirebaseGroup;
+    if (groupData.createdBy !== userEmail) {
+      throw new Error('Solo el creador del grupo puede eliminarlo');
+    }
+
+    // Eliminar todas las invitaciones relacionadas con este grupo
+    const invitationsQuery = query(
+      collection(db, 'invitations'),
+      where('groupId', '==', groupId)
+    );
+    const invitationsSnapshot = await getDocs(invitationsQuery);
+    
+    // Eliminar invitaciones en lote
+    const deletePromises = invitationsSnapshot.docs.map(doc => deleteDoc(doc.ref));
+    await Promise.all(deletePromises);
+
+    // Eliminar el grupo
+    await deleteDoc(doc(db, 'circulos', groupId));
+  } catch (error) {
+    console.error('Error deleting group:', error);
+    throw error;
+  }
 };

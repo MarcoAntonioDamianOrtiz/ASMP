@@ -140,21 +140,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="bg-white rounded-lg shadow-lg p-4 max-w-sm">
-    <div class="flex items-center justify-between mb-4">
-      <h3 class="text-lg font-semibold text-gray-800 flex items-center">
-        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
-        </svg>
-        Rastreo GPS
-      </h3>
-      <div 
-        :class="isTracking ? 'bg-green-500' : 'bg-gray-400'"
-        class="w-3 h-3 rounded-full"
-        :title="isTracking ? 'Activo' : 'Inactivo'"
-      ></div>
-    </div>
+ 
 
     <!-- Estado actual -->
     <div class="mb-4 text-sm">
@@ -189,36 +175,4 @@ onUnmounted(() => {
       <p class="text-red-600 text-sm">{{ error }}</p>
     </div>
 
-    <!-- Controles -->
-    <div class="flex gap-2">
-      <button
-        v-if="!isTracking"
-        @click="startTracking"
-        class="flex-1 bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 text-sm"
-      >
-        Iniciar Rastreo
-      </button>
-      <button
-        v-else
-        @click="stopTracking"
-        class="flex-1 bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 text-sm"
-      >
-        Detener Rastreo
-      </button>
-      
-      <button
-        @click="getLocationOnce"
-        class="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 text-sm"
-        title="Obtener ubicación actual"
-      >
-        📍
-      </button>
-    </div>
-
-    <!-- Información adicional -->
-    <div class="mt-3 text-xs text-gray-500 text-center">
-      <p>El rastreo GPS se actualiza automáticamente</p>
-      <p>Asegúrate de permitir el acceso a la ubicación</p>
-    </div>
-  </div>
-</template>
+    </template>

@@ -17,12 +17,6 @@ const isAuthenticated = computed(() => userStore.isAuthenticated);
         <div class="pt-20 pb-8 px-4">
             <div class="container mx-auto">
 
-
-                <!-- Componente de rastreo GPS (solo visible para usuarios logueados) -->
-                <div v-if="isAuthenticated" class="mb-8 flex justify-end">
-                    <LocationTracker />
-                </div>
-
                 <!-- Tarjeta Blanca -->
                 <div class="bg-custom-bg rounded-3xl shadow-lg p-8 md:p-12 text-center mt-8 mb-8">
                     <h1 class="mifrase">

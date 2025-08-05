@@ -4,7 +4,7 @@ import {
   subscribeToUserGroups, 
   subscribeToGroupLocations, 
   subscribeToMyLocation,
-  getUserGroups,
+  deleteUserGroup,
   type FirebaseUserLocation,
   type FirebaseGroup 
 } from '@/firebase'
@@ -22,6 +22,9 @@ const groupLocations = ref<FirebaseUserLocation[]>([])
 const userGroups = ref<FirebaseGroup[]>([])
 const currentGroup = ref<FirebaseGroup | null>(null)
 const markers = ref<Map<string, any>>(new Map())
+const showDeleteModal = ref(false)
+const groupToDelete = ref<FirebaseGroup | null>(null)
+const deleting = ref(false)
 
 // Tu token de Mapbox
 const MAPBOX_TOKEN = 'pk.eyJ1IjoiYW50b255MjcwNCIsImEiOiJjbWQweGg4d2IxOGdnMmtwemp3Nnp0YmIxIn0.-Hm3lVWw6U-NE10a0u2U2A'
@@ -108,7 +111,7 @@ const updateMarkers = () => {
       }
       
       // Crear popup
-      const popup = new window.mapboxgl.Popup({ offset: 25 })
+      const popup = new (window as any).mapboxgl.Popup({ offset: 25 })
         .setHTML(`
           <div class="p-3">
             <h3 class="font-bold text-gray-800">
@@ -127,7 +130,7 @@ const updateMarkers = () => {
         `)
 
       // Crear marcador
-      const marker = new window.mapboxgl.Marker(el)
+      const marker = new (window as any).mapboxgl.Marker(el)
         .setLngLat([location.lng, location.lat])
         .setPopup(popup)
         .addTo(map.value)
@@ -135,23 +138,6 @@ const updateMarkers = () => {
       markers.value.set(location.userId, marker)
     }
   })
-
-  // Ajustar vista del mapa para mostrar todos los marcadores
-  if (relevantLocations.value.length > 0) {
-    const bounds = new window.mapboxgl.LngLatBounds()
-    relevantLocations.value.forEach(location => {
-      bounds.extend([location.lng, location.lat])
-    })
-    
-    if (relevantLocations.value.length === 1) {
-      // Si solo hay un marcador, centrar en él
-      map.value.setCenter([relevantLocations.value[0].lng, relevantLocations.value[0].lat])
-      map.value.setZoom(16)
-    } else {
-      // Si hay múltiples marcadores, ajustar para mostrar todos
-      map.value.fitBounds(bounds, { padding: 50 })
-    }
-  }
 }
 
 // Cambiar grupo activo
@@ -168,12 +154,44 @@ const selectGroup = (group: FirebaseGroup | null) => {
   }
 }
 
+// Confirmar eliminación de grupo
+const confirmDeleteGroup = (group: FirebaseGroup) => {
+  if (group.createdBy !== userStore.user?.email) {
+    alert('Solo el creador del grupo puede eliminarlo')
+    return
+  }
+  groupToDelete.value = group
+  showDeleteModal.value = true
+}
+
+// Eliminar grupo
+const deleteGroup = async () => {
+  if (!groupToDelete.value || !userStore.user?.email) return
+  
+  deleting.value = true
+  
+  try {
+    await deleteUserGroup(groupToDelete.value.id, userStore.user.email)
+    showDeleteModal.value = false
+    groupToDelete.value = null
+    
+    // Si el grupo eliminado era el seleccionado, deseleccionar
+    if (currentGroup.value?.id === groupToDelete.value?.id) {
+      currentGroup.value = null
+    }
+  } catch (error: any) {
+    alert(error.message || 'Error al eliminar el grupo')
+  } finally {
+    deleting.value = false
+  }
+}
+
 // Inicializar mapa
 const initMap = () => {
   if (!mapContainer.value) return
 
   // Cargar Mapbox GL JS
-  if (!window.mapboxgl) {
+  if (!(window as any).mapboxgl) {
     const script = document.createElement('script')
     script.src = 'https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js'
     script.onload = () => {
@@ -191,11 +209,11 @@ const initMap = () => {
 }
 
 const createMap = () => {
-  if (!window.mapboxgl || !mapContainer.value) return
+  if (!(window as any).mapboxgl || !mapContainer.value) return
 
-  window.mapboxgl.accessToken = MAPBOX_TOKEN
+  ;(window as any).mapboxgl.accessToken = MAPBOX_TOKEN
 
-  map.value = new window.mapboxgl.Map({
+  map.value = new (window as any).mapboxgl.Map({
     container: mapContainer.value,
     style: 'mapbox://styles/mapbox/streets-v12',
     center: [-97.9691, 19.3867], // Coordenadas de UTT
@@ -203,11 +221,11 @@ const createMap = () => {
   })
 
   // Agregar controles de navegación
-  map.value.addControl(new window.mapboxgl.NavigationControl())
+  map.value.addControl(new (window as any).mapboxgl.NavigationControl())
 
   // Agregar control de geolocalización
   map.value.addControl(
-    new window.mapboxgl.GeolocateControl({
+    new (window as any).mapboxgl.GeolocateControl({
       positionOptions: {
         enableHighAccuracy: true
       },
@@ -266,150 +284,109 @@ watch(() => relevantLocations.value, () => {
 </script>
 
 <template>
-  <div class="space-y-4">
-    <!-- Selector de grupo -->
-    <div v-if="userGroups.length > 0" class="bg-white rounded-lg shadow p-4">
-      <h4 class="font-semibold text-gray-800 mb-3">Seleccionar Grupo</h4>
-      <div class="flex flex-wrap gap-2">
-        <button
-          @click="selectGroup(null)"
-          :class="[
-            'px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-            !currentGroup 
-              ? 'bg-blue-500 text-white' 
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          ]"
-        >
-          Solo yo
-        </button>
-        <button
-          v-for="group in userGroups"
-          :key="group.id"
-          @click="selectGroup(group)"
-          :class="[
-            'px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-            currentGroup && currentGroup.id === group.id 
-              ? 'bg-green-500 text-white' 
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          ]"
-        >
-          {{ group.name }} ({{ group.members.length }})
-        </button>
+  <div class="flex h-screen bg-gray-100">
+    <!-- Panel izquierdo -->
+    <div class="w-80 bg-white shadow-lg flex flex-col">
+      <!-- Header -->
+      <div class="p-4 border-b border-gray-200">
+        <h2 class="text-lg font-semibold text-gray-800 flex items-center">
+          📍 Ubicaciones en tiempo real
+        </h2>
+      </div>
+
+      <!-- Información del grupo -->
+      <div class="p-4 border-b border-gray-200">
+        <div class="flex items-center gap-2 mb-4">
+          <button
+            @click="selectGroup(null)"
+            :class="[
+              'px-3 py-1.5 rounded-full text-sm font-medium transition-colors',
+              !currentGroup 
+                ? 'bg-gray-800 text-white' 
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            ]"
+          >
+            Ubicaciones
+          </button>
+          <button
+            v-for="group in userGroups"
+            :key="group.id"
+            @click="selectGroup(group)"
+            :class="[
+              'px-3 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center gap-1',
+              currentGroup && currentGroup.id === group.id 
+                ? 'bg-green-500 text-white' 
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            ]"
+          >
+            {{ group.name }}
+            <button
+              v-if="group.createdBy === userStore.user?.email"
+              @click.stop="confirmDeleteGroup(group)"
+              class="ml-1 text-red-500 hover:text-red-700 text-xs"
+              title="Eliminar grupo"
+            >
+              ✕
+            </button>
+          </button>
+        </div>
+        </div>
+       
+
+      <!-- Lista de miembros -->
+      <div class="p-4 flex-1">
+        <h4 class="font-semibold text-gray-800 mb-3">Lista de miembros</h4>
+        
       </div>
     </div>
-
-    <!-- Mapa -->
-    <div class="relative">
+       <!-- Mapa principal -->
+    <div class="flex-1 relative">
       <div 
         ref="mapContainer" 
-        class="w-full h-96 rounded-lg overflow-hidden"
-        style="min-height: 500px;"
+        class="w-full h-full"
       ></div>
       
       <!-- Overlay de carga -->
       <div 
         v-if="loading" 
-        class="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center rounded-lg"
+        class="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center"
       >
         <div class="text-center">
           <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto mb-2"></div>
           <span class="text-gray-600 text-sm">Cargando mapa...</span>
         </div>
       </div>
-
-      <!-- Leyenda -->
-      <div class="absolute top-4 right-4 bg-white rounded-lg shadow-lg p-3 text-xs">
-        <h4 class="font-semibold mb-2">Leyenda</h4>
-        <div class="space-y-1">
-          <div class="flex items-center">
-            <div class="w-3 h-3 rounded-full bg-red-500 mr-2"></div>
-            <span>Mi ubicación</span>
-          </div>
-          <div v-if="currentGroup" class="flex items-center">
-            <div class="w-3 h-3 rounded-full bg-blue-500 mr-2"></div>
-            <span>Miembros del grupo</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Panel de información -->
-      <div class="absolute bottom-4 left-4 bg-white rounded-lg shadow-lg p-3 text-xs max-w-xs">
-        <div class="space-y-1">
-          <div><strong>Mi ubicación:</strong> {{ myLocation ? 'Activa' : 'Inactiva' }}</div>
-          <div v-if="currentGroup">
-            <strong>Grupo:</strong> {{ currentGroup.name }}
-          </div>
-          <div v-else>
-            <strong>Modo:</strong> Solo mi ubicación
-          </div>
-          <div><strong>Miembros visibles:</strong> {{ relevantLocations.length }}</div>
-          <div class="text-gray-500">
-            Actualización: {{ new Date().toLocaleTimeString() }}
-          </div>
-        </div>
-      </div>
     </div>
 
-    <!-- Información del grupo actual -->
-    <div v-if="currentGroup" class="bg-white rounded-lg shadow p-4">
-      <div class="flex items-center justify-between mb-3">
-        <h4 class="font-semibold text-gray-800">{{ currentGroup.name }}</h4>
-        <span class="text-sm text-gray-500">{{ currentGroup.members.length }} miembros</span>
-      </div>
-      
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        <!-- Mi información -->
-        <div class="border rounded-lg p-3 bg-red-50 border-red-200">
-          <div class="flex items-center">
-            <div class="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center text-white font-bold text-sm mr-3">
-              📍
-            </div>
-            <div>
-              <h5 class="font-medium text-gray-800">Tú</h5>
-              <p class="text-xs text-gray-600">{{ userStore.user?.email }}</p>
-              <p class="text-xs" :class="myLocation?.isOnline ? 'text-green-600' : 'text-gray-500'">
-                {{ myLocation?.isOnline ? 'En línea' : 'Desconectado' }}
-              </p>
-            </div>
-          </div>
+    <!-- Modal de confirmación para eliminar grupo -->
+    <div v-if="showDeleteModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4">
+          Eliminar Grupo
+        </h3>
+        
+        <p class="text-gray-600 mb-6">
+          ¿Estás seguro de que quieres eliminar el grupo "{{ groupToDelete?.name }}"? 
+          Esta acción no se puede deshacer y se removerán todos los miembros.
+        </p>
+        
+        <div class="flex gap-3">
+          <button
+            @click="deleteGroup"
+            :disabled="deleting"
+            class="flex-1 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors disabled:opacity-50"
+          >
+            {{ deleting ? 'Eliminando...' : 'Eliminar' }}
+          </button>
+          <button
+            @click="showDeleteModal = false"
+            :disabled="deleting"
+            class="flex-1 px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-700 rounded-lg transition-colors disabled:opacity-50"
+          >
+            Cancelar
+          </button>
         </div>
-
-        <!-- Miembros del grupo -->
-        <div 
-          v-for="location in groupLocations.filter(loc => loc.userId !== userStore.user?.uid)"
-          :key="location.userId"
-          class="border rounded-lg p-3 bg-gray-50"
-        >
-          <div class="flex items-center">
-            <div 
-              class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm mr-3"
-              :style="{ backgroundColor: getUserColor(location.userName) }"
-            >
-              {{ location.userName.charAt(0).toUpperCase() }}
-            </div>
-            <div>
-              <h5 class="font-medium text-gray-800">{{ location.userName }}</h5>
-              <p class="text-xs text-gray-600">{{ location.userEmail }}</p>
-              <p class="text-xs" :class="location.isOnline ? 'text-green-600' : 'text-gray-500'">
-                {{ location.isOnline ? 'En línea' : 'Desconectado' }}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Mensaje cuando no hay grupos -->
-    <div v-else-if="userGroups.length === 0" class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-center">
-      <div class="text-yellow-800">
-        <svg class="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
-        </svg>
-        <h4 class="font-semibold mb-1">No tienes grupos</h4>
-        <p class="text-sm">Crea un grupo o únete a uno para ver las ubicaciones de otros miembros.</p>
-        <p class="text-sm mt-1">Por ahora solo se muestra tu ubicación.</p>
       </div>
     </div>
   </div>
 </template>
-
