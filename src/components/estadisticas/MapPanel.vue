@@ -5,7 +5,7 @@ import {
   subscribeToGroupLocations, 
   subscribeToMyLocation,
   deleteUserGroup,
-  type FirebaseUserLocation,
+  type FirebaseUbicacion, // Cambiado de FirebaseUserLocation
   type FirebaseGroup 
 } from '@/firebase'
 import { useUserStore } from '@/stores/user'
@@ -17,8 +17,8 @@ const props = defineProps<{
 const userStore = useUserStore()
 const mapContainer = ref<HTMLElement>()
 const map = ref<any>(null)
-const myLocation = ref<FirebaseUserLocation | null>(null)
-const groupLocations = ref<FirebaseUserLocation[]>([])
+const myLocation = ref<FirebaseUbicacion | null>(null) // Actualizado
+const groupLocations = ref<FirebaseUbicacion[]>([]) // Actualizado
 const userGroups = ref<FirebaseGroup[]>([])
 const currentGroup = ref<FirebaseGroup | null>(null)
 const markers = ref<Map<string, any>>(new Map())
@@ -41,7 +41,7 @@ const getUserColor = (name: string): string => {
 
 // Computed para mostrar ubicaciones relevantes
 const relevantLocations = computed(() => {
-  const locations: FirebaseUserLocation[] = []
+  const locations: FirebaseUbicacion[] = []
   
   // Siempre mostrar mi ubicación
   if (myLocation.value) {
@@ -64,6 +64,8 @@ const relevantLocations = computed(() => {
 // Función para crear o actualizar marcadores
 const updateMarkers = () => {
   if (!map.value) return
+
+  console.log('Actualizando marcadores:', relevantLocations.value)
 
   // Limpiar marcadores existentes
   markers.value.forEach(marker => marker.remove())
@@ -143,12 +145,15 @@ const updateMarkers = () => {
 // Cambiar grupo activo
 const selectGroup = (group: FirebaseGroup | null) => {
   currentGroup.value = group
+  console.log('Grupo seleccionado:', group)
   // Limpiar ubicaciones del grupo anterior
   groupLocations.value = []
   
   // Si hay un grupo seleccionado, suscribirse a sus ubicaciones
   if (group) {
+    console.log('Suscribiéndose a ubicaciones del grupo:', group.id)
     subscribeToGroupLocations(group.id, (locations) => {
+      console.log('Ubicaciones del grupo recibidas:', locations)
       groupLocations.value = locations
     })
   }
@@ -248,13 +253,17 @@ onMounted(async () => {
   
   initMap()
 
+  console.log('Iniciando suscripciones para usuario:', userStore.user.uid)
+
   // Suscribirse a mi ubicación
   unsubscribeMyLocation = subscribeToMyLocation(userStore.user.uid, (location) => {
+    console.log('Mi ubicación actualizada:', location)
     myLocation.value = location
   })
 
   // Suscribirse a mis grupos
   unsubscribeUserGroups = subscribeToUserGroups(userStore.user.email!, (groups) => {
+    console.log('Grupos del usuario:', groups)
     userGroups.value = groups
     
     // Si no hay grupo seleccionado y hay grupos disponibles, seleccionar el primero
@@ -279,6 +288,7 @@ onUnmounted(() => {
 })
 
 watch(() => relevantLocations.value, () => {
+  console.log('Ubicaciones relevantes cambiaron:', relevantLocations.value)
   updateMarkers()
 }, { deep: true })
 </script>
@@ -306,7 +316,7 @@ watch(() => relevantLocations.value, () => {
                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             ]"
           >
-            Ubicaciones
+            Solo yo
           </button>
           <button
             v-for="group in userGroups"
@@ -330,16 +340,74 @@ watch(() => relevantLocations.value, () => {
             </button>
           </button>
         </div>
-        </div>
+      </div>
        
-
       <!-- Lista de miembros -->
       <div class="p-4 flex-1">
-        <h4 class="font-semibold text-gray-800 mb-3">Lista de miembros</h4>
+        <h4 class="font-semibold text-gray-800 mb-3">
+          {{ currentGroup ? `Miembros de ${currentGroup.name}` : 'Mi ubicación' }}
+        </h4>
         
+        <!-- Mi ubicación -->
+        <div v-if="myLocation" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center">
+              <div class="w-3 h-3 bg-red-500 rounded-full mr-3"></div>
+              <div>
+                <p class="font-medium text-red-800">📍 Mi Ubicación</p>
+                <p class="text-sm text-red-600">{{ myLocation.userEmail }}</p>
+                <p class="text-xs text-red-500 mt-1">
+                  <span class="inline-block w-2 h-2 rounded-full mr-1" :class="myLocation.isOnline ? 'bg-green-500' : 'bg-gray-400'"></span>
+                  {{ myLocation.isOnline ? 'En línea' : 'Desconectado' }}
+                </p>
+              </div>
+            </div>
+            <div class="text-xs text-red-400">
+              {{ new Date(myLocation.timestamp?.toDate ? myLocation.timestamp.toDate() : myLocation.timestamp).toLocaleTimeString() }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Ubicaciones del grupo -->
+        <div v-if="currentGroup && groupLocations.length > 0" class="space-y-3">
+          <div 
+            v-for="location in groupLocations.filter(loc => loc.userId !== userStore.user?.uid)" 
+            :key="location.userId"
+            class="p-3 bg-green-50 border border-green-200 rounded-lg"
+          >
+            <div class="flex items-center justify-between">
+              <div class="flex items-center">
+                <div class="w-3 h-3 rounded-full mr-3" :style="{ backgroundColor: getUserColor(location.userName) }"></div>
+                <div>
+                  <p class="font-medium text-green-800">{{ location.userName }}</p>
+                  <p class="text-sm text-green-600">{{ location.userEmail }}</p>
+                  <p class="text-xs text-green-500 mt-1">
+                    <span class="inline-block w-2 h-2 rounded-full mr-1" :class="location.isOnline ? 'bg-green-500' : 'bg-gray-400'"></span>
+                    {{ location.isOnline ? 'En línea' : 'Desconectado' }}
+                  </p>
+                </div>
+              </div>
+              <div class="text-xs text-green-400">
+                {{ new Date(location.timestamp?.toDate ? location.timestamp.toDate() : location.timestamp).toLocaleTimeString() }}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sin miembros -->
+        <div v-if="currentGroup && groupLocations.length === 0" class="text-center py-4 text-gray-500">
+          <p class="text-sm">No hay ubicaciones de miembros</p>
+          <p class="text-xs">Los miembros aparecerán cuando activen su GPS</p>
+        </div>
+
+        <!-- Solo mi ubicación -->
+        <div v-if="!currentGroup && !myLocation" class="text-center py-4 text-gray-500">
+          <p class="text-sm">Activa tu GPS para ver tu ubicación</p>
+        </div>
       </div>
     </div>
-       <!-- Mapa principal -->
+
+    <!-- Mapa principal -->
     <div class="flex-1 relative">
       <div 
         ref="mapContainer" 
@@ -354,6 +422,24 @@ watch(() => relevantLocations.value, () => {
         <div class="text-center">
           <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto mb-2"></div>
           <span class="text-gray-600 text-sm">Cargando mapa...</span>
+        </div>
+      </div>
+
+      <!-- Info panel -->
+      <div class="absolute top-4 right-4 bg-white rounded-lg shadow-lg p-4 max-w-xs">
+        <h4 class="font-semibold text-gray-800 mb-2">Información</h4>
+        <div class="space-y-2 text-sm">
+          <div class="flex items-center">
+            <div class="w-4 h-4 bg-red-500 rounded-full border-2 border-white shadow mr-2"></div>
+            <span class="text-gray-600">Tu ubicación</span>
+          </div>
+          <div class="flex items-center">
+            <div class="w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow mr-2"></div>
+            <span class="text-gray-600">Miembros del grupo</span>
+          </div>
+          <div class="text-xs text-gray-500 mt-2">
+            Total ubicaciones: {{ relevantLocations.length }}
+          </div>
         </div>
       </div>
     </div>
@@ -389,4 +475,3 @@ watch(() => relevantLocations.value, () => {
       </div>
     </div>
   </div>
-</template>

@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useUserStore } from '@/stores/user'
-import { updateUserLocation, setUserOffline, db } from '@/firebase'
-import { collection, getDocs } from 'firebase/firestore'
+import { updateUserLocation, setUserOffline } from '@/firebase'
 
 const userStore = useUserStore()
 const isTracking = ref(false)
@@ -65,53 +64,24 @@ const stopTracking = () => {
   error.value = null
 }
 
-const getLocations = async () => {
-  try {
-    const collectionRef = collection(db, 'user_locations');
-    const querySnapshot = await getDocs(collectionRef);
-    const locations: any[] = [];
-    
-    querySnapshot.forEach((doc) => {
-      locations.push({
-        id: doc.id,
-        ...doc.data()
-      });
-    });
-    console.log('Ubicaciones obtenidas:', locations);
-
-    return locations;
-  } catch (err) {
-    console.error('Error al obtener ubicaciones:', err);
-    error.value = 'Error al obtener las ubicaciones';
-    return [];
-  }
-}        
-
-
 // Función para actualizar la ubicación
 const updateLocation = async (position: GeolocationPosition) => {
   const { latitude, longitude } = position.coords
   
   currentPosition.value = { lat: latitude, lng: longitude }
   lastUpdate.value = new Date()
-  const getLocationsResult = await getLocations();
-  console.log('Ubicaciones actuales:', getLocationsResult);
 
   try {
-  //   const collectionref = collection(db, 'user_locations');
-  //   // Función para obtener todas las ubicaciones
-    
-    // // Actualizar ubicación en Firebase (no crear nueva)
-    // await updateUserLocation(userStore.user?.uid || '', {
-    //   userEmail: userStore.user?.email || '',
-    //   userName: userStore.userProfile?.nombre || userStore.user?.displayName || 'Usuario',
-    //   lat: latitude,
-    //   lng: longitude,
-    //   accuracy: position.coords.accuracy
-    // })
+    // AHORA SÍ GUARDAR LA UBICACIÓN
+    await updateUserLocation(userStore.user?.uid || '', {
+      userEmail: userStore.user?.email || '',
+      userName: userStore.userProfile?.nombre || userStore.user?.displayName || 'Usuario',
+      lat: latitude,
+      lng: longitude,
+      accuracy: position.coords.accuracy
+    })
 
-
-    console.log('Ubicación actualizada:', { lat: latitude, lng: longitude })
+    console.log('Ubicación actualizada exitosamente:', { lat: latitude, lng: longitude })
   } catch (err) {
     console.error('Error al actualizar ubicación:', err)
     error.value = 'Error al actualizar la ubicación'
@@ -159,6 +129,13 @@ const getLocationOnce = () => {
   )
 }
 
+// Auto-iniciar el tracking cuando el componente se monta
+onMounted(() => {
+  if (userStore.isAuthenticated) {
+    startTracking()
+  }
+})
+
 // Limpiar al desmontar el componente
 onUnmounted(() => {
   stopTracking()
@@ -170,7 +147,36 @@ onUnmounted(() => {
 </script>
 
 <template>
- 
+  <div class="bg-white rounded-lg shadow p-6">
+    <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+      📍 Rastreo GPS
+    </h3>
+
+    <!-- Controles -->
+    <div class="flex gap-2 mb-4">
+      <button
+        v-if="!isTracking"
+        @click="startTracking"
+        :disabled="!userStore.isAuthenticated"
+        class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white text-sm rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        Iniciar Rastreo
+      </button>
+      <button
+        v-else
+        @click="stopTracking"
+        class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-sm rounded-lg transition-colors"
+      >
+        Detener Rastreo
+      </button>
+      <button
+        @click="getLocationOnce"
+        :disabled="!userStore.isAuthenticated"
+        class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        Ubicación Actual
+      </button>
+    </div>
 
     <!-- Estado actual -->
     <div class="mb-4 text-sm">
@@ -205,4 +211,9 @@ onUnmounted(() => {
       <p class="text-red-600 text-sm">{{ error }}</p>
     </div>
 
-    </template>
+    <!-- Info -->
+    <div v-if="!userStore.isAuthenticated" class="text-sm text-gray-500">
+      <p>⚠️ Debes iniciar sesión para usar el rastreo GPS</p>
+    </div>
+  </div>
+</template>

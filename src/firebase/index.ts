@@ -75,8 +75,9 @@ export interface FirebaseAlert {
 }
 
 // Nueva interfaz para ubicaciones (ahora un documento por usuario)
-export interface FirebaseUserLocation {
-  userId: string;
+export interface FirebaseUbicacion {
+  id: string;
+  userId: string; // UID del usuario
   userEmail: string;
   userName: string;
   lat: number;
@@ -142,11 +143,14 @@ export const updateUserStatus = async (userId: string, status: 'online' | 'offli
   try {
     const userRef = doc(db, 'users', userId);
     await updateDoc(userRef, {
-      status,
+      coordinates: [locationData.lng, locationData.lat], // [lng, lat] como en tu estructura
+      location: `${locationData.lat.toFixed(6)}, ${locationData.lng.toFixed(6)}`,
+      status: 'online',
       lastSeen: new Date()
     });
   } catch (error) {
-    console.error('Error updating user status:', error);
+    console.error('Error updating user location:', error);
+    throw error;
   }
 };
 
@@ -382,7 +386,7 @@ export const resolveAlert = async (alertId: string): Promise<void> => {
 };
 
 // Funciones de ubicaciones (NUEVA IMPLEMENTACIÓN EFICIENTE)
-export const updateUserLocation = async (userId: string, locationData: {
+  export const updateUserLocation = async (userId: string, locationData: {
   userEmail: string;
   userName: string;
   lat: number;
@@ -390,8 +394,8 @@ export const updateUserLocation = async (userId: string, locationData: {
   accuracy?: number;
 }): Promise<void> => {
   try {
-    // Usar el userId como ID del documento para actualizar en lugar de crear nuevo
-    const locationRef = doc(db, 'user_locations', userId);
+    // Crear documento en la colección 'ubicaciones' con el userId como ID del documento
+    const locationRef = doc(db, 'ubicaciones', userId);
     await setDoc(locationRef, {
       userId,
       ...locationData,
@@ -405,7 +409,7 @@ export const updateUserLocation = async (userId: string, locationData: {
 };
 
 // Obtener ubicaciones de miembros del grupo
-export const getGroupMembersLocations = async (groupId: string): Promise<FirebaseUserLocation[]> => {
+  export const getGroupMembersLocations = async (groupId: string): Promise<FirebaseUbicacion[]> => {
   try {
     // Primero obtener los miembros del grupo
     const groupDoc = await getDoc(doc(db, 'circulos', groupId));
@@ -417,15 +421,26 @@ export const getGroupMembersLocations = async (groupId: string): Promise<Firebas
     if (memberEmails.length === 0) return [];
 
     // Obtener las ubicaciones de los miembros
-    const locations: FirebaseUserLocation[] = [];
+    const locations: FirebaseUbicacion[] = [];
     
     for (const email of memberEmails) {
       const user = await getUserByEmail(email);
-      if (user) {
-        const locationDoc = await getDoc(doc(db, 'user_locations', user.id));
+              // Buscar su ubicación en 'ubicaciones'
+        const locationDoc = await getDoc(doc(db, 'ubicaciones', user.id));
         if (locationDoc.exists()) {
-        locations.push({ id: locationDoc.id, ...locationDoc.data() } as FirebaseUserLocation);
-}
+          const locationData = locationDoc.data();
+          locations.push({ 
+            id: locationDoc.id, 
+            userId: user.id,
+            userEmail: email,
+            userName: user.name,
+            lat: locationData.lat,
+            lng: locationData.lng,
+            accuracy: locationData.accuracy,
+            timestamp: locationData.timestamp,
+            isOnline: locationData.isOnline || false
+          } as FirebaseUbicacion);
+        }
       }
     }
 
@@ -437,12 +452,27 @@ export const getGroupMembersLocations = async (groupId: string): Promise<Firebas
 };
 
 // Obtener mi ubicación
-export const getMyLocation = async (userId: string): Promise<FirebaseUserLocation | null> => {
+export const getMyLocation = async (userId: string): Promise<FirebaseUbicacion | null> => {
   try {
-    const locationDoc = await getDoc(doc(db, 'user_locations', userId));
+    const locationDoc = await getDoc(doc(db, 'ubicaciones', userId));
     if (locationDoc.exists()) {
-    return { id: locationDoc.id, ...locationDoc.data() } as FirebaseUserLocation;
-}
+      const locationData = locationDoc.data();
+      // También obtener info del usuario
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      const userData = userDoc.exists() ? userDoc.data() : null;
+      
+      return { 
+        id: locationDoc.id, 
+        userId: userId,
+        userEmail: userData?.email || '',
+        userName: userData?.name || 'Usuario',
+        lat: locationData.lat,
+        lng: locationData.lng,
+        accuracy: locationData.accuracy,
+        timestamp: locationData.timestamp,
+        isOnline: locationData.isOnline || false
+      } as FirebaseUbicacion;
+    }
 
     return null;
   } catch (error) {
@@ -454,19 +484,19 @@ export const getMyLocation = async (userId: string): Promise<FirebaseUserLocatio
 // Marcar usuario como offline
 export const setUserOffline = async (userId: string): Promise<void> => {
   try {
-    const locationRef = doc(db, 'user_locations', userId);
+    // Actualizar en 'ubicaciones'
+    const locationRef = doc(db, 'ubicaciones', userId);
     await updateDoc(locationRef, {
       isOnline: false,
       timestamp: new Date()
     });
     
-    // También actualizar en users
+    // También actualizar en 'users'
     await updateUserStatus(userId, 'offline');
   } catch (error) {
     console.error('Error setting user offline:', error);
   }
 };
-
 // Listeners en tiempo real
 export const subscribeToUsers = (callback: (users: FirebaseUser[]) => void) => {
   return onSnapshot(collection(db, 'users'), (snapshot) => {
@@ -495,7 +525,8 @@ export const subscribeToUserGroups = (userEmail: string, callback: (groups: Fire
   );
 };
 
-export const subscribeToGroupLocations = (groupId: string, callback: (locations: FirebaseUserLocation[]) => void) => {
+// Suscribirse a ubicaciones del grupo en tiempo real
+export const subscribeToGroupLocations = (groupId: string, callback: (locations: FirebaseUbicacion[]) => void) => {
   // Primero obtener los miembros del grupo y luego suscribirse a sus ubicaciones
   const groupRef = doc(db, 'circulos', groupId);
   
@@ -519,14 +550,30 @@ export const subscribeToGroupLocations = (groupId: string, callback: (locations:
   });
 };
 
-export const subscribeToMyLocation = (userId: string, callback: (location: FirebaseUserLocation | null) => void) => {
-  return onSnapshot(doc(db, 'user_locations', userId), (snapshot) => {
+// Suscribirse a mi ubicación en tiempo real
+export const subscribeToMyLocation = (userId: string, callback: (location: FirebaseUbicacion | null) => void) => {
+  return onSnapshot(doc(db, 'ubicaciones', userId), async (snapshot) => {
     if (snapshot.exists()) {
-    callback({ id: snapshot.id, ...snapshot.data() } as FirebaseUserLocation);
-  } else {
-    callback(null);
-}
-
+      const locationData = snapshot.data();
+      
+      // Obtener info del usuario
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      const userData = userDoc.exists() ? userDoc.data() : null;
+      
+      callback({ 
+        id: snapshot.id,
+        userId: userId,
+        userEmail: userData?.email || '',
+        userName: userData?.name || 'Usuario',
+        lat: locationData.lat,
+        lng: locationData.lng,
+        accuracy: locationData.accuracy,
+        timestamp: locationData.timestamp,
+        isOnline: locationData.isOnline || false
+      } as FirebaseUbicacion);
+    } else {
+      callback(null);
+    }
   }, (error) => {
     console.error('Error in my location subscription:', error);
   });
