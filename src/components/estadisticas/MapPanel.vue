@@ -63,83 +63,148 @@ const relevantLocations = computed(() => {
 
 // Función para crear o actualizar marcadores
 const updateMarkers = () => {
-  if (!map.value) return
+  if (!map.value) {
+    console.log('Mapa no disponible para actualizar marcadores')
+    return
+  }
 
-  console.log('Actualizando marcadores:', relevantLocations.value)
+  console.log('Actualizando marcadores con ubicaciones:', relevantLocations.value)
 
   // Limpiar marcadores existentes
-  markers.value.forEach(marker => marker.remove())
+  markers.value.forEach(marker => {
+    try {
+      marker.remove()
+    } catch (e) {
+      console.warn('Error removiendo marcador:', e)
+    }
+  })
   markers.value.clear()
+
+  // Verificar que tenemos ubicaciones
+  if (relevantLocations.value.length === 0) {
+    console.log('No hay ubicaciones para mostrar')
+    return
+  }
 
   // Agregar marcadores de ubicaciones relevantes
   relevantLocations.value.forEach(location => {
-    if (location.lat && location.lng) {
-      const isMyLocation = location.userId === userStore.user?.uid
-      const color = isMyLocation ? '#ef4444' : getUserColor(location.userName)
+    if (!location.lat || !location.lng) {
+      console.warn('Ubicación sin coordenadas:', location)
+      return
+    }
+
+    console.log('Creando marcador para:', location.userName, 'en:', location.lat, location.lng)
+
+    const isMyLocation = location.userId === userStore.user?.uid
+    const color = isMyLocation ? '#ef4444' : getUserColor(location.userName)
       
       // Crear elemento del marcador
-      const el = document.createElement('div')
-      el.className = isMyLocation ? 'my-location-marker' : 'group-member-marker'
-      el.style.cssText = `
-        background-color: ${color};
-        width: ${isMyLocation ? '35px' : '30px'};
-        height: ${isMyLocation ? '35px' : '30px'};
-        border-radius: 50%;
-        border: 3px solid white;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-weight: bold;
-        font-size: ${isMyLocation ? '14px' : '12px'};
-        ${isMyLocation ? 'animation: pulse 2s infinite;' : ''}
-      `
-      el.textContent = isMyLocation ? '📍' : location.userName.charAt(0).toUpperCase()
+        const el = document.createElement('div')
+    el.className = isMyLocation ? 'my-location-marker' : 'group-member-marker'
+    el.style.cssText = `
+      background-color: ${color};
+      width: ${isMyLocation ? '40px' : '32px'};
+      height: ${isMyLocation ? '40px' : '32px'};
+      border-radius: 50%;
+      border: 4px solid white;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      font-size: ${isMyLocation ? '16px' : '14px'};
+      position: relative;
+      ${isMyLocation ? 'animation: pulseMarker 2s infinite;' : ''}
+    `
+    
+    el.innerHTML = isMyLocation 
+      ? '<div style="font-size: 20px;">📍</div>' 
+      : `<div>${location.userName.charAt(0).toUpperCase()}</div>`
       
       // Agregar animación CSS si no existe
-      if (isMyLocation && !document.querySelector('#pulse-animation')) {
-        const style = document.createElement('style')
-        style.id = 'pulse-animation'
-        style.textContent = `
-          @keyframes pulse {
-            0% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.1); opacity: 0.8; }
-            100% { transform: scale(1); opacity: 1; }
-          }
-        `
-        document.head.appendChild(style)
-      }
+        if (isMyLocation && !document.querySelector('#pulse-marker-animation')) {
+      const style = document.createElement('style')
+      style.id = 'pulse-marker-animation'
+      style.textContent = `
+        @keyframes pulseMarker {
+          0% { transform: scale(1); box-shadow: 0 4px 12px rgba(239, 68, 68, 0.5); }
+          50% { transform: scale(1.15); box-shadow: 0 6px 20px rgba(239, 68, 68, 0.7); }
+          100% { transform: scale(1); box-shadow: 0 4px 12px rgba(239, 68, 68, 0.5); }
+        }
+      `
+      document.head.appendChild(style)
+    }
       
       // Crear popup
-      const popup = new (window as any).mapboxgl.Popup({ offset: 25 })
-        .setHTML(`
-          <div class="p-3">
-            <h3 class="font-bold text-gray-800">
-              ${isMyLocation ? '📍 Mi Ubicación' : location.userName}
-            </h3>
-            <p class="text-sm text-gray-600">${location.userEmail}</p>
-            <p class="text-xs text-gray-500 mt-1">
-              <span class="inline-block w-2 h-2 rounded-full mr-1" style="background-color: ${location.isOnline ? '#10b981' : '#6b7280'}"></span>
-              ${location.isOnline ? 'En línea' : 'Desconectado'}
-            </p>
-            <p class="text-xs text-gray-400 mt-1">
-              ${new Date(location.timestamp?.toDate ? location.timestamp.toDate() : location.timestamp).toLocaleString()}
-            </p>
-            ${location.accuracy ? `<p class="text-xs text-gray-400">Precisión: ${Math.round(location.accuracy)}m</p>` : ''}
-          </div>
-        `)
+      const popup = new (window as any).mapboxgl.Popup({ 
+      offset: [0, -40],
+      closeButton: false,
+      closeOnClick: false
+    }).setHTML(`
+      <div class="p-4 min-w-[200px]">
+        <div class="flex items-center mb-2">
+          <div class="w-3 h-3 rounded-full mr-2" style="background-color: ${color}"></div>
+          <h3 class="font-bold text-gray-800">
+            ${isMyLocation ? '📍 Mi Ubicación' : location.userName}
+          </h3>
+        </div>
+        <p class="text-sm text-gray-600 mb-2">${location.userEmail}</p>
+        <div class="flex items-center text-xs mb-1">
+          <span class="inline-block w-2 h-2 rounded-full mr-2" style="background-color: ${location.isOnline ? '#10b981' : '#6b7280'}"></span>
+          <span class="${location.isOnline ? 'text-green-600' : 'text-gray-500'}">
+            ${location.isOnline ? '🟢 En línea' : '⚫ Desconectado'}
+          </span>
+        </div>
+        <p class="text-xs text-gray-400">
+          📅 ${new Date(location.timestamp?.toDate ? location.timestamp.toDate() : location.timestamp).toLocaleString()}
+        </p>
+        ${location.accuracy ? `<p class="text-xs text-gray-400 mt-1">🎯 Precisión: ${Math.round(location.accuracy)}m</p>` : ''}
+        <div class="mt-2 pt-2 border-t border-gray-200">
+          <p class="text-xs text-gray-500">
+            📍 ${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}
+          </p>
+        </div>
+      </div>
+    `)
 
-      // Crear marcador
+      try {
+      // Crear y agregar marcador
       const marker = new (window as any).mapboxgl.Marker(el)
         .setLngLat([location.lng, location.lat])
         .setPopup(popup)
         .addTo(map.value)
 
+      // Mostrar popup al hover
+      el.addEventListener('mouseenter', () => {
+        marker.togglePopup()
+      })
+
       markers.value.set(location.userId, marker)
+      
+      console.log('Marcador creado exitosamente para:', location.userName)
+    } catch (error) {
+      console.error('Error creando marcador:', error)
     }
   })
+
+    // Ajustar vista del mapa para mostrar todos los marcadores
+  if (relevantLocations.value.length > 0) {
+    const bounds = new (window as any).mapboxgl.LngLatBounds()
+    relevantLocations.value.forEach(location => {
+      if (location.lat && location.lng) {
+        bounds.extend([location.lng, location.lat])
+      }
+    })
+    
+    if (!bounds.isEmpty()) {
+      map.value.fitBounds(bounds, {
+        padding: 50,
+        maxZoom: 16
+      })
+    }
+  }
 }
 
 // Cambiar grupo activo
@@ -193,19 +258,28 @@ const deleteGroup = async () => {
 
 // Inicializar mapa
 const initMap = () => {
-  if (!mapContainer.value) return
+  if (!mapContainer.value) return;
 
-  // Cargar Mapbox GL JS
   if (!(window as any).mapboxgl) {
+    // Cargar CSS primero
+    const link = document.createElement('link')
+    link.href = 'https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css'
+    link.rel = 'stylesheet'
+    document.head.appendChild(link)
+    
+    // Luego cargar el script
     const script = document.createElement('script')
     script.src = 'https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js'
     script.onload = () => {
-      const link = document.createElement('link')
-      link.href = 'https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css'
-      link.rel = 'stylesheet'
-      document.head.appendChild(link)
-      
-      setTimeout(createMap, 100)
+      // Verificar que tanto el script como CSS estén listos
+      const checkReady = () => {
+        if ((window as any).mapboxgl && document.styleSheets.length > 0) {
+          createMap()
+        } else {
+          setTimeout(checkReady, 50)
+        }
+      }
+      checkReady()
     }
     document.head.appendChild(script)
   } else {
@@ -221,25 +295,21 @@ const createMap = () => {
   map.value = new (window as any).mapboxgl.Map({
     container: mapContainer.value,
     style: 'mapbox://styles/mapbox/streets-v12',
-    center: [-97.9691, 19.3867], // Coordenadas de UTT
+    center: [-97.9691, 19.3867],
     zoom: 14
   })
 
-  // Agregar controles de navegación
   map.value.addControl(new (window as any).mapboxgl.NavigationControl())
-
-  // Agregar control de geolocalización
   map.value.addControl(
     new (window as any).mapboxgl.GeolocateControl({
-      positionOptions: {
-        enableHighAccuracy: true
-      },
+      positionOptions: { enableHighAccuracy: true },
       trackUserLocation: true,
       showUserHeading: true
     })
   )
 
   map.value.on('load', () => {
+    console.log('Mapa cargado, actualizando marcadores...')
     updateMarkers()
   })
 }
