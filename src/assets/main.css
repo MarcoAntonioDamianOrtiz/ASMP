@@ -23,3 +23,22 @@
     margin-bottom: 2rem;
     background-color: #F0F8F4;
 }
+
+/* Estilos para el mapa - NUEVOS */
+.mapboxgl-map {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+.mapboxgl-canvas {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* Utilidad para truncar texto */
+.line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}

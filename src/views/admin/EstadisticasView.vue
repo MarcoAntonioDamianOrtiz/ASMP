@@ -7,7 +7,6 @@ import {
   inviteToGroup,
   respondToInvitation,
   subscribeToUserInvitations,
-  removeMemberFromGroup,
   type FirebaseGroup, 
   type FirebaseAlert,
   type GroupInvitation 
@@ -219,7 +218,7 @@ onUnmounted(() => {
   <LayoutView>
     <MainNav />
 
-    <div class="min-h-screen bg-gray-50 pt-20">
+    <div class="min-h-screen custom-green-bg pt-20">
       <!-- Header compacto -->
       <div class="bg-white border-b border-gray-200 px-6 py-4">
         <div class="flex items-center justify-between">
@@ -308,10 +307,10 @@ onUnmounted(() => {
       </div>
 
       <!-- Layout principal de 3 columnas -->
-      <div class="flex" style="height: calc(100vh - 140px);">
+      <div class="flex overflow-hidden" style="height: calc(100vh - 180px);">
         
         <!-- Panel izquierdo - Grupos -->
-        <div class="w-80 bg-white border-r border-gray-200 flex flex-col">
+        <div class="w-80 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
           <!-- Header de grupos -->
           <div class="p-4 border-b border-gray-200">
             <div class="flex justify-between items-center mb-4">
@@ -455,12 +454,14 @@ onUnmounted(() => {
         </div>
 
         <!-- Panel central - Mapa -->
-        <div class="flex-1 relative">
-          <MapPanel :loading="loading" />
+        <div class="flex-1 bg-white relative overflow-hidden">
+          <div class="absolute inset-0">
+            <MapPanel :loading="loading" />
+          </div>
         </div>
 
         <!-- Panel derecho - Alertas -->
-        <div class="w-80 bg-white border-l border-gray-200 flex flex-col">
+        <div class="w-80 bg-white border-l border-gray-200 flex flex-col flex-shrink-0">
           <!-- Header de alertas con filtros -->
           <div class="p-4 border-b border-gray-200">
             <div class="flex items-center justify-between mb-4">
@@ -618,11 +619,3 @@ onUnmounted(() => {
   </LayoutView>
 </template>
 
-<style scoped>
-.line-clamp-2 {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-</style>
