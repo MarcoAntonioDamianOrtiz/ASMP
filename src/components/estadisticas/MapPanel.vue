@@ -475,3 +475,4 @@ watch(() => relevantLocations.value, () => {
       </div>
     </div>
   </div>
+</template>

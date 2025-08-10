@@ -12,6 +12,7 @@ import {
   type GroupInvitation 
 } from '@/firebase'
 import MapPanel from '@/components/estadisticas/MapPanel.vue'
+import LocationTracker from '@/components/locationTracker.vue' // Agregamos el tracker
 import MainNav from '../../components/MainNav.vue'
 import LayoutView from './LayoutView.vue'
 import { useUserStore } from '@/stores/user'
@@ -218,6 +219,11 @@ onUnmounted(() => {
   <LayoutView>
     <MainNav />
 
+    <!-- COMPONENTE OCULTO PARA RASTREO GPS -->
+    <div class="hidden">
+      <LocationTracker />
+    </div>
+
     <div class="min-h-screen custom-green-bg pt-20">
       <!-- Header compacto -->
       <div class="bg-white border-b border-gray-200 px-6 py-4">
@@ -234,6 +240,11 @@ onUnmounted(() => {
             <div class="flex items-center">
               <span class="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
               <span class="text-gray-600">{{ userGroups.reduce((total, group) => total + group.members.length, 0) }} miembros</span>
+            </div>
+            <!-- Indicador de GPS -->
+            <div class="flex items-center">
+              <div class="w-2 h-2 bg-red-500 rounded-full mr-2 animate-pulse"></div>
+              <span class="text-gray-600 text-xs">GPS activo</span>
             </div>
           </div>
         </div>
@@ -267,7 +278,6 @@ onUnmounted(() => {
             </svg>
             Invitaciones Pendientes ({{ pendingInvitations.length }})
           </h3>
-
           <div class="space-y-3">
             <div 
               v-for="invitation in pendingInvitations" 
@@ -308,7 +318,6 @@ onUnmounted(() => {
 
       <!-- Layout principal de 3 columnas -->
       <div class="flex overflow-hidden" style="height: calc(100vh - 180px);">
-        
         <!-- Panel izquierdo - Grupos -->
         <div class="w-80 bg-white border-r border-gray-200 flex flex-col flex-shrink-0">
           <!-- Header de grupos -->
@@ -327,7 +336,6 @@ onUnmounted(() => {
                 + Crear
               </button>
             </div>
-
             <!-- Formulario crear grupo -->
             <div v-if="showCreateGroup" class="mb-4 p-3 bg-gray-50 rounded-lg">
               <h4 class="font-medium text-gray-800 mb-3">Nuevo Grupo</h4>
@@ -368,7 +376,6 @@ onUnmounted(() => {
               </div>
             </div>
           </div>
-
           <!-- Lista de grupos -->
           <div class="flex-1 overflow-y-auto p-4">
             <div v-if="userGroups.length === 0 && !showCreateGroup" class="text-center py-8 text-gray-500">
@@ -378,7 +385,6 @@ onUnmounted(() => {
               <p class="text-sm">No tienes grupos aún</p>
               <p class="text-xs text-gray-400">Crea tu primer grupo</p>
             </div>
-
             <div v-else class="space-y-3">
               <div 
                 v-for="group in userGroups" 
@@ -407,12 +413,10 @@ onUnmounted(() => {
                     </button>
                   </div>
                 </div>
-
                 <!-- Descripción -->
                 <p v-if="group.description" class="text-xs text-gray-600 mb-2 line-clamp-2">
                   {{ group.description }}
                 </p>
-
                 <!-- Miembros activos -->
                 <div class="space-y-1">
                   <h4 class="text-xs font-medium text-gray-700 uppercase tracking-wide">
@@ -437,7 +441,6 @@ onUnmounted(() => {
                     </div>
                   </div>
                 </div>
-
                 <!-- Indicador de grupo seleccionado -->
                 <div v-if="selectedGroup && selectedGroup.id === group.id" 
                      class="mt-2 pt-2 border-t border-green-200">
@@ -475,7 +478,6 @@ onUnmounted(() => {
                 {{ filteredAlerts.length }}
               </span>
             </div>
-
             <!-- Filtros de tiempo -->
             <div class="flex space-x-1 bg-gray-100 rounded-lg p-1">
               <button
@@ -497,7 +499,6 @@ onUnmounted(() => {
               </button>
             </div>
           </div>
-
           <!-- Lista de alertas -->
           <div class="flex-1 overflow-y-auto p-4">
             <div v-if="filteredAlerts.length === 0" class="text-center py-8 text-gray-500">
@@ -507,7 +508,6 @@ onUnmounted(() => {
               <p class="text-sm">No hay alertas en este período</p>
               <p class="text-xs text-gray-400 mt-1">Las alertas aparecerán aquí</p>
             </div>
-
             <div v-else class="space-y-3">
               <div 
                 v-for="alert in filteredAlerts" 
@@ -530,7 +530,6 @@ onUnmounted(() => {
                     {{ alert.type === 'panic' ? 'Pánico' : alert.type === 'geofence' ? 'Geocerca' : 'Manual' }}
                   </span>
                 </div>
-
                 <!-- Detalles de la alerta -->
                 <div class="space-y-1">
                   <div class="flex items-center text-xs text-gray-600">
@@ -547,7 +546,6 @@ onUnmounted(() => {
                     {{ new Date(alert.timestamp?.toDate ? alert.timestamp.toDate() : alert.timestamp).toLocaleString() }}
                   </div>
                 </div>
-
                 <!-- Estado de resolución -->
                 <div class="mt-2 pt-2 border-t border-gray-200">
                   <div v-if="alert.resolved" class="flex items-center text-xs text-green-600">
@@ -568,54 +566,50 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Modal de invitación -->
-    <div v-if="showInviteModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-        <h3 class="text-lg font-semibold text-gray-800 mb-4">
-          Invitar a: {{ selectedGroupForInvite?.name }}
-        </h3>
-        
-        <div class="space-y-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Email del usuario</label>
-            <input
-              v-model="inviteForm.email"
-              type="email"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="usuario@correo.com"
-              @keyup.enter="inviteUser"
-            />
-          </div>
-          
-          <div class="flex gap-2">
-            <button
-              @click="inviteUser"
-              :disabled="inviteForm.loading"
-              class="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50"
-            >
-              {{ inviteForm.loading ? 'Enviando...' : 'Enviar Invitación' }}
-            </button>
-            <button
-              @click="showInviteModal = false"
-              class="px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-700 rounded-lg transition-colors"
-            >
-              Cancelar
-            </button>
+      <!-- Modal de invitación -->
+      <div v-if="showInviteModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+          <h3 class="text-lg font-semibold text-gray-800 mb-4">
+            Invitar a: {{ selectedGroupForInvite?.name }}
+          </h3>
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Email del usuario</label>
+              <input
+                v-model="inviteForm.email"
+                type="email"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="usuario@correo.com"
+                @keyup.enter="inviteUser"
+              />
+            </div>
+            <div class="flex gap-2">
+              <button
+                @click="inviteUser"
+                :disabled="inviteForm.loading"
+                class="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50"
+              >
+                {{ inviteForm.loading ? 'Enviando...' : 'Enviar Invitación' }}
+              </button>
+              <button
+                @click="showInviteModal = false"
+                class="px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-700 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Estado de carga -->
-    <div v-if="loading" class="fixed inset-0 bg-white bg-opacity-75 flex items-center justify-center z-50">
-      <div class="text-center">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto mb-4"></div>
-        <span class="text-gray-600">Cargando datos...</span>
+      <!-- Estado de carga -->
+      <div v-if="loading" class="fixed inset-0 bg-white bg-opacity-75 flex items-center justify-center z-50">
+        <div class="text-center">
+          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto mb-4"></div>
+          <span class="text-gray-600">Cargando datos...</span>
+        </div>
       </div>
     </div>
-
   </LayoutView>
 </template>
-

@@ -442,8 +442,6 @@ export const resolveAlert = async (alertId: string): Promise<void> => {
           } as FirebaseUbicacion);
         }
       }
-    }
-
     return locations;
   } catch (error) {
     console.error('Error getting group members locations:', error);
