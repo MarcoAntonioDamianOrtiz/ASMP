@@ -459,7 +459,11 @@ onUnmounted(() => {
         <!-- Panel central - Mapa -->
         <div class="flex-1 bg-white relative overflow-hidden">
           <div class="absolute inset-0">
-            <MapPanel :loading="loading" />
+            <MapPanel 
+  :loading="loading" 
+  :selected-group="selectedGroup"
+  :user-groups="userGroups"
+  />
           </div>
         </div>
 

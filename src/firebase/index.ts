@@ -394,7 +394,7 @@ export const resolveAlert = async (alertId: string): Promise<void> => {
 };
 
 // Funciones de ubicaciones (NUEVA IMPLEMENTACIÓN EFICIENTE)
-  export const updateUserLocation = async (userId: string, locationData: {
+export const updateUserLocation = async (userId: string, locationData: {
   userEmail: string;
   userName: string;
   lat: number;
@@ -417,7 +417,7 @@ export const resolveAlert = async (alertId: string): Promise<void> => {
 };
 
 // Obtener ubicaciones de miembros del grupo
-  export const getGroupMembersLocations = async (groupId: string): Promise<FirebaseUbicacion[]> => {
+export const getGroupMembersLocations = async (groupId: string): Promise<FirebaseUbicacion[]> => {
   try {
     // Primero obtener los miembros del grupo
     const groupDoc = await getDoc(doc(db, 'circulos', groupId));
@@ -433,7 +433,8 @@ export const resolveAlert = async (alertId: string): Promise<void> => {
     
     for (const email of memberEmails) {
       const user = await getUserByEmail(email);
-              // Buscar su ubicación en 'ubicaciones'
+      if (user) {
+        // Buscar su ubicación en 'ubicaciones'
         const locationDoc = await getDoc(doc(db, 'ubicaciones', user.id));
         if (locationDoc.exists()) {
           const locationData = locationDoc.data();
@@ -450,6 +451,7 @@ export const resolveAlert = async (alertId: string): Promise<void> => {
           } as FirebaseUbicacion);
         }
       }
+    }
     return locations;
   } catch (error) {
     console.error('Error getting group members locations:', error);
@@ -503,6 +505,7 @@ export const setUserOffline = async (userId: string): Promise<void> => {
     console.error('Error setting user offline:', error);
   }
 };
+
 // Listeners en tiempo real
 export const subscribeToUsers = (callback: (users: FirebaseUser[]) => void) => {
   return onSnapshot(collection(db, 'users'), (snapshot) => {
@@ -531,13 +534,16 @@ export const subscribeToUserGroups = (userEmail: string, callback: (groups: Fire
   );
 };
 
-// Suscribirse a ubicaciones del grupo en tiempo real
+// Suscribirse a ubicaciones del grupo en tiempo real - VERSIÓN CORREGIDA
 export const subscribeToGroupLocations = (groupId: string, callback: (locations: FirebaseUbicacion[]) => void) => {
+  console.log('Suscribiéndose a ubicaciones del grupo:', groupId);
+  
   // Primero obtener miembros del grupo
   const groupRef = doc(db, 'circulos', groupId);
   
-  return onSnapshot(groupRef, (groupSnapshot) => {
+  return onSnapshot(groupRef, async (groupSnapshot) => {
     if (!groupSnapshot.exists()) {
+      console.log('Grupo no existe');
       callback([]);
       return;
     }
@@ -545,58 +551,123 @@ export const subscribeToGroupLocations = (groupId: string, callback: (locations:
     const groupData = groupSnapshot.data() as FirebaseGroup;
     const memberEmails = groupData.members;
     
+    console.log('Miembros del grupo:', memberEmails);
+    
     if (memberEmails.length === 0) {
       callback([]);
       return;
     }
 
-    // Obtener ubicaciones de todos los miembros
-    const unsubscribes: (() => void)[] = [];
-    const locations = new Map<string, FirebaseUbicacion>();
-
-      memberEmails.forEach(async (email) => {
-      try {
-        const user = await getUserByEmail(email);
-        if (user) {
-          const unsubscribe = onSnapshot(
-            doc(db, 'ubicaciones', user.id),
-            (locationDoc) => {
-              if (locationDoc.exists()) {
-                const locationData = locationDoc.data();
-                locations.set(user.id, {
-                  id: locationDoc.id,
-                  userId: user.id,
-                  userEmail: email,
-                  userName: user.name,
-                  lat: locationData.lat,
-                  lng: locationData.lng,
-                  accuracy: locationData.accuracy,
-                  timestamp: locationData.timestamp,
-                  isOnline: locationData.isOnline || false
-                } as FirebaseUbicacion);
-              } else {
-                locations.delete(user.id);
-              }
-              
-              // Emitir ubicaciones actualizadas
-              callback(Array.from(locations.values()));
-            },
-            (error) => console.error('Error in location subscription:', error)
-          );
-          
-          unsubscribes.push(unsubscribe);
+    try {
+      // Obtener ubicaciones iniciales de todos los miembros
+      const locationPromises = memberEmails.map(async (email) => {
+        try {
+          const user = await getUserByEmail(email);
+          if (user) {
+            const locationDoc = await getDoc(doc(db, 'ubicaciones', user.id));
+            if (locationDoc.exists()) {
+              const locationData = locationDoc.data();
+              return {
+                id: locationDoc.id,
+                userId: user.id,
+                userEmail: email,
+                userName: user.name,
+                lat: locationData.lat,
+                lng: locationData.lng,
+                accuracy: locationData.accuracy,
+                timestamp: locationData.timestamp,
+                isOnline: locationData.isOnline || false
+              } as FirebaseUbicacion;
+            }
+          }
+          return null;
+        } catch (error) {
+          console.error('Error obteniendo ubicación para:', email, error);
+          return null;
         }
-      } catch (error) {
-        console.error('Error getting user:', error);
+      });
+
+      const locations = await Promise.all(locationPromises);
+      const validLocations = locations.filter(loc => loc !== null) as FirebaseUbicacion[];
+      
+      console.log('Ubicaciones válidas encontradas:', validLocations);
+      callback(validLocations);
+
+      // Configurar listeners en tiempo real para cada ubicación
+      const unsubscribes: (() => void)[] = [];
+      
+      for (const email of memberEmails) {
+        try {
+          const user = await getUserByEmail(email);
+          if (user) {
+            const unsubscribe = onSnapshot(
+              doc(db, 'ubicaciones', user.id),
+              async () => {
+                // Cuando cualquier ubicación cambie, volver a obtener todas
+                const updatedPromises = memberEmails.map(async (memberEmail) => {
+                  try {
+                    const memberUser = await getUserByEmail(memberEmail);
+                    if (memberUser) {
+                      const memberLocationDoc = await getDoc(doc(db, 'ubicaciones', memberUser.id));
+                      if (memberLocationDoc.exists()) {
+                        const locationData = memberLocationDoc.data();
+                        return {
+                          id: memberLocationDoc.id,
+                          userId: memberUser.id,
+                          userEmail: memberEmail,
+                          userName: memberUser.name,
+                          lat: locationData.lat,
+                          lng: locationData.lng,
+                          accuracy: locationData.accuracy,
+                          timestamp: locationData.timestamp,
+                          isOnline: locationData.isOnline || false
+                        } as FirebaseUbicacion;
+                      }
+                    }
+                    return null;
+                  } catch (error) {
+                    console.error('Error en actualización:', error);
+                    return null;
+                  }
+                });
+                
+                const updatedLocations = await Promise.all(updatedPromises);
+                const validUpdatedLocations = updatedLocations.filter(loc => loc !== null) as FirebaseUbicacion[];
+                
+                console.log('Ubicaciones actualizadas:', validUpdatedLocations);
+                callback(validUpdatedLocations);
+              },
+              (error) => console.error('Error en suscripción de ubicación:', error)
+            );
+            
+            unsubscribes.push(unsubscribe);
+          }
+        } catch (error) {
+          console.error('Error configurando suscripción para:', email, error);
+        }
       }
-    });
-    
-    // Retornar función para limpiar todas las suscripciones
-    return () => {
-      unsubscribes.forEach(unsub => unsub());
-    };
+      
+      // Retornar función para limpiar todas las suscripciones
+      return () => {
+        console.log('Limpiando suscripciones de ubicaciones');
+        unsubscribes.forEach(unsub => {
+          try {
+            unsub();
+          } catch (error) {
+            console.error('Error limpiando suscripción:', error);
+          }
+        });
+      };
+      
+    } catch (error) {
+      console.error('Error obteniendo ubicaciones del grupo:', error);
+      callback([]);
+    }
+  }, (error) => {
+    console.error('Error en suscripción del grupo:', error);
   });
 };
+
 // Suscribirse a mi ubicación en tiempo real
 export const subscribeToMyLocation = (userId: string, callback: (location: FirebaseUbicacion | null) => void) => {
   return onSnapshot(doc(db, 'ubicaciones', userId), async (snapshot) => {

@@ -1,26 +1,26 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
 import { 
-  subscribeToUserGroups, 
   subscribeToGroupLocations, 
   subscribeToMyLocation,
   deleteUserGroup,
-  type FirebaseUbicacion, // Cambiado de FirebaseUserLocation
+  type FirebaseUbicacion,
   type FirebaseGroup 
 } from '@/firebase'
 import { useUserStore } from '@/stores/user'
 
+// ✅ AGREGAR PROPS PARA RECIBIR DATOS DESDE EL PADRE
 const props = defineProps<{
   loading: boolean
+  selectedGroup: FirebaseGroup | null  // ✅ NUEVO
+  userGroups: FirebaseGroup[]          // ✅ NUEVO
 }>()
 
 const userStore = useUserStore()
 const mapContainer = ref<HTMLElement>()
 const map = ref<any>(null)
-const myLocation = ref<FirebaseUbicacion | null>(null) // Actualizado
-const groupLocations = ref<FirebaseUbicacion[]>([]) // Actualizado
-const userGroups = ref<FirebaseGroup[]>([])
-const currentGroup = ref<FirebaseGroup | null>(null)
+const myLocation = ref<FirebaseUbicacion | null>(null)
+const groupLocations = ref<FirebaseUbicacion[]>([])
 const markers = ref<Map<string, any>>(new Map())
 const showDeleteModal = ref(false)
 const groupToDelete = ref<FirebaseGroup | null>(null)
@@ -48,8 +48,9 @@ const relevantLocations = computed(() => {
     locations.push(myLocation.value)
   }
   
+  // ✅ USAR EL PROP SELECTED_GROUP EN LUGAR DE CURRENTGROUP
   // Si tengo un grupo seleccionado, mostrar ubicaciones del grupo
-  if (currentGroup.value) {
+  if (props.selectedGroup) {
     groupLocations.value.forEach(loc => {
       // No duplicar mi ubicación
       if (loc.userId !== userStore.user?.uid) {
@@ -98,8 +99,8 @@ const updateMarkers = () => {
     const isMyLocation = location.userId === userStore.user?.uid
     const color = isMyLocation ? '#ef4444' : getUserColor(location.userName)
       
-      // Crear elemento del marcador
-        const el = document.createElement('div')
+    // Crear elemento del marcador
+    const el = document.createElement('div')
     el.className = isMyLocation ? 'my-location-marker' : 'group-member-marker'
     el.style.cssText = `
       background-color: ${color};
@@ -123,8 +124,8 @@ const updateMarkers = () => {
       ? '<div style="font-size: 20px;">📍</div>' 
       : `<div>${location.userName.charAt(0).toUpperCase()}</div>`
       
-      // Agregar animación CSS si no existe
-        if (isMyLocation && !document.querySelector('#pulse-marker-animation')) {
+    // Agregar animación CSS si no existe
+    if (isMyLocation && !document.querySelector('#pulse-marker-animation')) {
       const style = document.createElement('style')
       style.id = 'pulse-marker-animation'
       style.textContent = `
@@ -137,8 +138,8 @@ const updateMarkers = () => {
       document.head.appendChild(style)
     }
       
-      // Crear popup
-      const popup = new (window as any).mapboxgl.Popup({ 
+    // Crear popup
+    const popup = new (window as any).mapboxgl.Popup({ 
       offset: [0, -40],
       closeButton: false,
       closeOnClick: false
@@ -169,7 +170,7 @@ const updateMarkers = () => {
       </div>
     `)
 
-      try {
+    try {
       // Crear y agregar marcador
       const marker = new (window as any).mapboxgl.Marker(el)
         .setLngLat([location.lng, location.lat])
@@ -189,7 +190,7 @@ const updateMarkers = () => {
     }
   })
 
-    // Ajustar vista del mapa para mostrar todos los marcadores
+  // Ajustar vista del mapa para mostrar todos los marcadores
   if (relevantLocations.value.length > 0) {
     const bounds = new (window as any).mapboxgl.LngLatBounds()
     relevantLocations.value.forEach(location => {
@@ -204,23 +205,6 @@ const updateMarkers = () => {
         maxZoom: 16
       })
     }
-  }
-}
-
-// Cambiar grupo activo
-const selectGroup = (group: FirebaseGroup | null) => {
-  currentGroup.value = group
-  console.log('Grupo seleccionado:', group)
-  // Limpiar ubicaciones del grupo anterior
-  groupLocations.value = []
-  
-  // Si hay un grupo seleccionado, suscribirse a sus ubicaciones
-  if (group) {
-    console.log('Suscribiéndose a ubicaciones del grupo:', group.id)
-    subscribeToGroupLocations(group.id, (locations) => {
-      console.log('Ubicaciones del grupo recibidas:', locations)
-      groupLocations.value = locations
-    })
   }
 }
 
@@ -244,11 +228,6 @@ const deleteGroup = async () => {
     await deleteUserGroup(groupToDelete.value.id, userStore.user.email)
     showDeleteModal.value = false
     groupToDelete.value = null
-    
-    // Si el grupo eliminado era el seleccionado, deseleccionar
-    if (currentGroup.value?.id === groupToDelete.value?.id) {
-      currentGroup.value = null
-    }
   } catch (error: any) {
     alert(error.message || 'Error al eliminar el grupo')
   } finally {
@@ -315,7 +294,6 @@ const createMap = () => {
 }
 
 let unsubscribeMyLocation: (() => void) | null = null
-let unsubscribeUserGroups: (() => void) | null = null
 let unsubscribeGroupLocations: (() => void) | null = null
 
 onMounted(async () => {
@@ -330,33 +308,40 @@ onMounted(async () => {
     console.log('Mi ubicación actualizada:', location)
     myLocation.value = location
   })
-
-  // Suscribirse a mis grupos
-  unsubscribeUserGroups = subscribeToUserGroups(userStore.user.email!, (groups) => {
-    console.log('Grupos del usuario:', groups)
-    userGroups.value = groups
-    
-    // Si no hay grupo seleccionado y hay grupos disponibles, seleccionar el primero
-    if (!currentGroup.value && groups.length > 0) {
-      selectGroup(groups[0])
-    }
-    
-    // Si el grupo actual ya no existe, deseleccionar
-    if (currentGroup.value && !groups.find(g => g.id === currentGroup.value!.id)) {
-      selectGroup(null)
-    }
-  })
 })
 
 onUnmounted(() => {
   if (unsubscribeMyLocation) unsubscribeMyLocation()
-  if (unsubscribeUserGroups) unsubscribeUserGroups()
   if (unsubscribeGroupLocations) unsubscribeGroupLocations()
   if (map.value) {
     map.value.remove()
   }
 })
 
+// ✅ WATCH PARA REACCIONAR CUANDO CAMBIE EL GRUPO SELECCIONADO
+watch(() => props.selectedGroup, (newGroup, oldGroup) => {
+  console.log('Grupo seleccionado cambió:', newGroup)
+  
+  // Limpiar suscripción anterior
+  if (unsubscribeGroupLocations) {
+    unsubscribeGroupLocations()
+    unsubscribeGroupLocations = null
+  }
+  
+  // Limpiar ubicaciones del grupo anterior
+  groupLocations.value = []
+  
+  // Si hay un grupo seleccionado, suscribirse a sus ubicaciones
+  if (newGroup) {
+    console.log('Suscribiéndose a ubicaciones del grupo:', newGroup.id)
+    unsubscribeGroupLocations = subscribeToGroupLocations(newGroup.id, (locations) => {
+      console.log('Ubicaciones del grupo recibidas:', locations)
+      groupLocations.value = locations
+    })
+  }
+}, { immediate: true }) // ✅ immediate: true para ejecutar inmediatamente
+
+// ✅ WATCH PARA ACTUALIZAR MARCADORES CUANDO CAMBIEN LAS UBICACIONES
 watch(() => relevantLocations.value, () => {
   console.log('Ubicaciones relevantes cambiaron:', relevantLocations.value)
   updateMarkers()
@@ -376,25 +361,14 @@ watch(() => relevantLocations.value, () => {
 
       <!-- Información del grupo -->
       <div class="p-4 border-b border-gray-200">
-        <div class="flex items-center gap-2 mb-4">
-          <button
-            @click="selectGroup(null)"
-            :class="[
-              'px-3 py-1.5 rounded-full text-sm font-medium transition-colors',
-              !currentGroup 
-                ? 'bg-gray-800 text-white' 
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            ]"
-          >
-            Solo yo
-          </button>
+        <div class="flex flex-wrap items-center gap-2 mb-4">
+          <!-- ✅ MOSTRAR GRUPOS USANDO LOS PROPS -->
           <button
             v-for="group in userGroups"
             :key="group.id"
-            @click="selectGroup(group)"
             :class="[
               'px-3 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center gap-1',
-              currentGroup && currentGroup.id === group.id 
+              selectedGroup && selectedGroup.id === group.id 
                 ? 'bg-green-500 text-white' 
                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             ]"
@@ -415,7 +389,7 @@ watch(() => relevantLocations.value, () => {
       <!-- Lista de miembros -->
       <div class="p-4 flex-1">
         <h4 class="font-semibold text-gray-800 mb-3">
-          {{ currentGroup ? `Miembros de ${currentGroup.name}` : 'Mi ubicación' }}
+          {{ selectedGroup ? `Miembros de ${selectedGroup.name}` : 'Mi ubicación' }}
         </h4>
         
         <!-- Mi ubicación -->
@@ -439,7 +413,7 @@ watch(() => relevantLocations.value, () => {
         </div>
 
         <!-- Ubicaciones del grupo -->
-        <div v-if="currentGroup && groupLocations.length > 0" class="space-y-3">
+        <div v-if="selectedGroup && groupLocations.length > 0" class="space-y-3">
           <div 
             v-for="location in groupLocations.filter(loc => loc.userId !== userStore.user?.uid)" 
             :key="location.userId"
@@ -465,13 +439,13 @@ watch(() => relevantLocations.value, () => {
         </div>
 
         <!-- Sin miembros -->
-        <div v-if="currentGroup && groupLocations.length === 0" class="text-center py-4 text-gray-500">
+        <div v-if="selectedGroup && groupLocations.length === 0" class="text-center py-4 text-gray-500">
           <p class="text-sm">No hay ubicaciones de miembros</p>
           <p class="text-xs">Los miembros aparecerán cuando activen su GPS</p>
         </div>
 
         <!-- Solo mi ubicación -->
-        <div v-if="!currentGroup && !myLocation" class="text-center py-4 text-gray-500">
+        <div v-if="!selectedGroup && !myLocation" class="text-center py-4 text-gray-500">
           <p class="text-sm">Activa tu GPS para ver tu ubicación</p>
         </div>
       </div>
