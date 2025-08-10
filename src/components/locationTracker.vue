@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useUserStore } from '@/stores/user'
-import { updateUserLocation, setUserOffline } from '@/firebase'
+import { updateUserLocation, setUserOffline, db } from '@/firebase'
+import { collection, getDocs } from 'firebase/firestore'
 
 const userStore = useUserStore()
 const isTracking = ref(false)
@@ -64,22 +65,51 @@ const stopTracking = () => {
   error.value = null
 }
 
+const getLocations = async () => {
+  try {
+    const collectionRef = collection(db, 'user_locations');
+    const querySnapshot = await getDocs(collectionRef);
+    const locations: any[] = [];
+    
+    querySnapshot.forEach((doc) => {
+      locations.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    console.log('Ubicaciones obtenidas:', locations);
+
+    return locations;
+  } catch (err) {
+    console.error('Error al obtener ubicaciones:', err);
+    error.value = 'Error al obtener las ubicaciones';
+    return [];
+  }
+}        
+
+
 // Función para actualizar la ubicación
 const updateLocation = async (position: GeolocationPosition) => {
   const { latitude, longitude } = position.coords
   
   currentPosition.value = { lat: latitude, lng: longitude }
   lastUpdate.value = new Date()
+  const getLocationsResult = await getLocations();
+  console.log('Ubicaciones actuales:', getLocationsResult);
 
   try {
-    // Actualizar ubicación en Firebase (no crear nueva)
-    await updateUserLocation(userStore.user?.uid || '', {
-      userEmail: userStore.user?.email || '',
-      userName: userStore.userProfile?.nombre || userStore.user?.displayName || 'Usuario',
-      lat: latitude,
-      lng: longitude,
-      accuracy: position.coords.accuracy
-    })
+  //   const collectionref = collection(db, 'user_locations');
+  //   // Función para obtener todas las ubicaciones
+    
+    // // Actualizar ubicación en Firebase (no crear nueva)
+    // await updateUserLocation(userStore.user?.uid || '', {
+    //   userEmail: userStore.user?.email || '',
+    //   userName: userStore.userProfile?.nombre || userStore.user?.displayName || 'Usuario',
+    //   lat: latitude,
+    //   lng: longitude,
+    //   accuracy: position.coords.accuracy
+    // })
+
 
     console.log('Ubicación actualizada:', { lat: latitude, lng: longitude })
   } catch (err) {
