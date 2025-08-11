@@ -11,11 +11,11 @@ import {
 } from '@/firebase'
 import { useUserStore } from '@/stores/user'
 
-// ✅ AGREGAR PROPS PARA RECIBIR DATOS DESDE EL PADRE
+// Props para recibir datos desde el padre
 const props = defineProps<{
   loading: boolean
-  selectedGroup: FirebaseGroup | null  // ✅ NUEVO
-  userGroups: FirebaseGroup[]          // ✅ NUEVO
+  selectedGroup: FirebaseGroup | null
+  userGroups: FirebaseGroup[]
 }>()
 
 const userStore = useUserStore()
@@ -29,7 +29,6 @@ const groupToDelete = ref<FirebaseGroup | null>(null)
 const deleting = ref(false)
 
 const circleActionLoading = ref<string | null>(null)
-const memberStatuses = ref<Map<string, any>>(new Map())
 
 // Tu token de Mapbox
 const MAPBOX_TOKEN = 'pk.eyJ1IjoiYW50b255MjcwNCIsImEiOiJjbWQweGg4d2IxOGdnMmtwemp3Nnp0YmIxIn0.-Hm3lVWw6U-NE10a0u2U2A'
@@ -48,12 +47,11 @@ const getUserColor = (name: string): string => {
 const relevantLocations = computed(() => {
   const locations: FirebaseUbicacion[] = []
   
-  // Siempre mostrar mi ubicación
+  // Siempre mostrar mi ubicación si existe
   if (myLocation.value) {
     locations.push(myLocation.value)
   }
   
-  // ✅ USAR EL PROP SELECTED_GROUP EN LUGAR DE CURRENTGROUP
   // Si tengo un grupo seleccionado, mostrar ubicaciones del grupo
   if (props.selectedGroup) {
     groupLocations.value.forEach(loc => {
@@ -67,41 +65,48 @@ const relevantLocations = computed(() => {
   return locations
 })
 
-// Función para crear o actualizar marcadores
+// FUNCIÓN MEJORADA para actualizar marcadores
 const updateMarkers = () => {
   if (!map.value) {
     console.log('Mapa no disponible para actualizar marcadores')
     return
   }
 
-  console.log('Actualizando marcadores con ubicaciones:', relevantLocations.value)
+  console.log('🗺️ Actualizando marcadores. Ubicaciones:', relevantLocations.value.length)
 
   // Limpiar marcadores existentes
-  markers.value.forEach(marker => {
+  markers.value.forEach((marker, key) => {
     try {
       marker.remove()
+      console.log('🧹 Marcador removido:', key)
     } catch (e) {
-      console.warn('Error removiendo marcador:', e)
+      console.warn('⚠️ Error removiendo marcador:', e)
     }
   })
   markers.value.clear()
 
   // Verificar que tenemos ubicaciones
   if (relevantLocations.value.length === 0) {
-    console.log('No hay ubicaciones para mostrar')
+    console.log('❌ No hay ubicaciones para mostrar')
     return
   }
 
   // Agregar marcadores de ubicaciones relevantes
   relevantLocations.value.forEach(location => {
     if (!location.lat || !location.lng) {
-      console.warn('Ubicación sin coordenadas:', location)
+      console.warn('⚠️ Ubicación sin coordenadas:', location)
       return
     }
 
-    console.log('Creando marcador para:', location.userName, 'en:', location.lat, location.lng)
-
+    // Solo mostrar ubicaciones online o la mía propia
     const isMyLocation = location.userId === userStore.user?.uid
+    if (!isMyLocation && !location.isOnline) {
+      console.log('⚫ Saltando ubicación offline:', location.userName)
+      return
+    }
+
+    console.log('📍 Creando marcador para:', location.userName, 'Online:', location.isOnline)
+
     const color = isMyLocation ? '#ef4444' : getUserColor(location.userName)
       
     // Crear elemento del marcador
@@ -123,6 +128,7 @@ const updateMarkers = () => {
       font-size: ${isMyLocation ? '16px' : '14px'};
       position: relative;
       ${isMyLocation ? 'animation: pulseMarker 2s infinite;' : ''}
+      ${!location.isOnline && !isMyLocation ? 'opacity: 0.5;' : ''}
     `
     
     el.innerHTML = isMyLocation 
@@ -189,9 +195,9 @@ const updateMarkers = () => {
 
       markers.value.set(location.userId, marker)
       
-      console.log('Marcador creado exitosamente para:', location.userName)
+      console.log('✅ Marcador creado exitosamente para:', location.userName)
     } catch (error) {
-      console.error('Error creando marcador:', error)
+      console.error('❌ Error creando marcador:', error)
     }
   })
 
@@ -224,7 +230,21 @@ const confirmDeleteGroup = (group: FirebaseGroup) => {
 }
 
 // Eliminar grupo
-// (Eliminado: declaración duplicada de deleteGroup)
+const deleteGroup = async () => {
+  if (!groupToDelete.value || !userStore.user?.email) return
+  
+  deleting.value = true
+  
+  try {
+    await deleteUserGroup(groupToDelete.value.id, userStore.user.email)
+    showDeleteModal.value = false
+    groupToDelete.value = null
+  } catch (error: any) {
+    alert(error.message || 'Error al eliminar el grupo')
+  } finally {
+    deleting.value = false
+  }
+}
 
 // Inicializar mapa
 const initMap = () => {
@@ -279,7 +299,7 @@ const createMap = () => {
   )
 
   map.value.on('load', () => {
-    console.log('Mapa cargado, actualizando marcadores...')
+    console.log('🗺️ Mapa cargado, actualizando marcadores...')
     updateMarkers()
   })
 }
@@ -292,14 +312,16 @@ onMounted(async () => {
   
   initMap()
 
-  console.log('Iniciando suscripciones para usuario:', userStore.user.uid)
+  console.log('🚀 Iniciando suscripciones para usuario:', userStore.user.uid)
 
   // Suscribirse a mi ubicación
   unsubscribeMyLocation = subscribeToMyLocation(userStore.user.uid, (location) => {
-    console.log('Mi ubicación actualizada:', location)
+    console.log('📍 Mi ubicación actualizada:', location)
     myLocation.value = location
   })
 })
+
+// FUNCIONES CORREGIDAS PARA MANEJO DE ESTADOS
 const getMemberLocationStatus = (memberEmail: string) => {
   const memberLocation = groupLocations.value.find(loc => loc.userEmail === memberEmail)
   
@@ -310,22 +332,18 @@ const getMemberLocationStatus = (memberEmail: string) => {
   }
 }
 
-// Función para obtener detalles de ubicación de un miembro
 const getMemberLocationDetails = (memberEmail: string) => {
   return groupLocations.value.find(loc => loc.userEmail === memberEmail)
 }
 
-// Función para obtener el nombre de un miembro
 const getMemberName = (memberEmail: string) => {
   const memberLocation = groupLocations.value.find(loc => loc.userEmail === memberEmail)
   if (memberLocation) {
     return memberLocation.userName
   }
-  // Si no hay ubicación, extraer nombre del email
   return memberEmail.split('@')[0]
 }
 
-// Función para formatear tiempo
 const formatTime = (timestamp: any) => {
   if (!timestamp) return 'Nunca'
   
@@ -340,7 +358,7 @@ const formatTime = (timestamp: any) => {
   return date.toLocaleDateString()
 }
 
-// Función para activar/desactivar círculo de un miembro
+// FUNCIÓN MEJORADA para activar/desactivar círculo
 const toggleMemberCircle = async (memberEmail: string) => {
   const status = getMemberLocationStatus(memberEmail)
   circleActionLoading.value = memberEmail
@@ -354,60 +372,49 @@ const toggleMemberCircle = async (memberEmail: string) => {
       await activateMemberCircle(memberEmail)
     }
     
-    // Refrescar ubicaciones después de la acción
+    // Esperar un poco más para asegurar la actualización
     setTimeout(() => {
       refreshGroupLocations()
-    }, 1000)
+    }, 1500)
     
   } catch (error) {
     console.error('❌ Error toggling circle:', error)
     alert('Error al cambiar estado del círculo: ' + error.message)
   } finally {
-    circleActionLoading.value = null
+    setTimeout(() => {
+      circleActionLoading.value = null
+    }, 2000) // Más tiempo para evitar clicks múltiples
   }
 }
 
-// Función para refrescar ubicaciones manualmente
+// FUNCIÓN MEJORADA para refrescar ubicaciones
 const refreshGroupLocations = () => {
   if (props.selectedGroup) {
-    console.log('🔄 Refrescando ubicaciones manualmente...')
-    // Forzar actualización limpiando y recargando
+    console.log('🔄 Refrescando ubicaciones manualmente para grupo:', props.selectedGroup.name)
+    
+    // Limpiar ubicaciones actuales
     groupLocations.value = []
     
     // Si ya hay una suscripción, limpiarla y recrearla
     if (unsubscribeGroupLocations) {
+      console.log('🧹 Limpiando suscripción anterior')
       unsubscribeGroupLocations()
       unsubscribeGroupLocations = null
     }
     
-    // Crear nueva suscripción
+    // Crear nueva suscripción después de un delay
     setTimeout(() => {
+      console.log('🔄 Creando nueva suscripción')
       unsubscribeGroupLocations = subscribeToGroupLocations(props.selectedGroup!.id, (locations) => {
-        console.log('🔄 Ubicaciones del grupo actualizadas:', locations)
+        console.log('📡 Ubicaciones actualizadas:', locations.length)
         groupLocations.value = locations
       })
-    }, 500)
+    }, 1000)
   }
 }
-// TAMBIÉN AGREGAR ESTA FUNCIÓN DE CONFIRMACIÓN MEJORADA
-// (Eliminada declaración duplicada de confirmDeleteGroup)
 
-const deleteGroup = async () => {
-  if (!groupToDelete.value || !userStore.user?.email) return
-  
-  deleting.value = true
-  
-  try {
-    await deleteUserGroup(groupToDelete.value.id, userStore.user.email)
-    showDeleteModal.value = false
-    groupToDelete.value = null
-  } catch (error: any) {
-    alert(error.message || 'Error al eliminar el grupo')
-  } finally {
-    deleting.value = false
-  }
-}
 onUnmounted(() => {
+  console.log('🧹 Limpiando componente MapPanel')
   if (unsubscribeMyLocation) unsubscribeMyLocation()
   if (unsubscribeGroupLocations) unsubscribeGroupLocations()
   if (map.value) {
@@ -415,12 +422,13 @@ onUnmounted(() => {
   }
 })
 
-// ✅ WATCH PARA REACCIONAR CUANDO CAMBIE EL GRUPO SELECCIONADO
+// WATCH MEJORADO para reaccionar cuando cambie el grupo seleccionado
 watch(() => props.selectedGroup, (newGroup, oldGroup) => {
-  console.log('Grupo seleccionado cambió:', newGroup)
+  console.log('🔄 Grupo seleccionado cambió de', oldGroup?.name, 'a', newGroup?.name)
   
   // Limpiar suscripción anterior
   if (unsubscribeGroupLocations) {
+    console.log('🧹 Limpiando suscripción del grupo anterior')
     unsubscribeGroupLocations()
     unsubscribeGroupLocations = null
   }
@@ -430,21 +438,23 @@ watch(() => props.selectedGroup, (newGroup, oldGroup) => {
   
   // Si hay un grupo seleccionado, suscribirse a sus ubicaciones
   if (newGroup) {
-    console.log('Suscribiéndose a ubicaciones del grupo:', newGroup.id)
-    unsubscribeGroupLocations = subscribeToGroupLocations(newGroup.id, (locations) => {
-      console.log('Ubicaciones del grupo recibidas:', locations)
-      groupLocations.value = locations
-    })
+    console.log('📡 Suscribiéndose a ubicaciones del nuevo grupo:', newGroup.id)
+    setTimeout(() => {
+      unsubscribeGroupLocations = subscribeToGroupLocations(newGroup.id, (locations) => {
+        console.log('📍 Ubicaciones del grupo recibidas:', locations.length)
+        groupLocations.value = locations
+      })
+    }, 500)
   }
-}, { immediate: true }) // ✅ immediate: true para ejecutar inmediatamente
+}, { immediate: true })
 
-// ✅ WATCH PARA ACTUALIZAR MARCADORES CUANDO CAMBIEN LAS UBICACIONES
-watch(() => relevantLocations.value, () => {
-  console.log('Ubicaciones relevantes cambiaron:', relevantLocations.value)
+// WATCH MEJORADO para actualizar marcadores cuando cambien las ubicaciones
+watch(() => relevantLocations.value, (newLocations, oldLocations) => {
+  console.log('🗺️ Ubicaciones relevantes cambiaron:', newLocations.length)
+  console.log('📊 Detalles:', newLocations.map(l => ({ name: l.userName, online: l.isOnline })))
   updateMarkers()
 }, { deep: true })
 </script>
-
 
 <template>
   <div class="flex h-screen bg-gray-100">
@@ -483,7 +493,7 @@ watch(() => relevantLocations.value, () => {
         </div>
       </div>
       
-      <!-- Lista de miembros CON CONTROLES DE CÍRCULO -->
+      <!-- Lista de miembros CON CONTROLES DE CÍRCULO MEJORADOS -->
       <div class="p-4 flex-1 overflow-y-auto">
         <h4 class="font-semibold text-gray-800 mb-3 flex items-center justify-between">
           <span>{{ selectedGroup ? `Miembros de ${selectedGroup.name}` : 'Mi ubicación' }}</span>
@@ -517,18 +527,18 @@ watch(() => relevantLocations.value, () => {
           </div>
         </div>
 
-        <!-- Miembros del grupo con controles -->
+        <!-- Miembros del grupo con controles MEJORADOS -->
         <div v-if="selectedGroup" class="space-y-3">
           <div 
             v-for="memberEmail in selectedGroup.members.filter(email => email !== userStore.user?.email)" 
             :key="memberEmail"
-            class="p-3 border rounded-lg"
-            :class="getMemberLocationStatus(memberEmail).hasLocation ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'"
+            class="p-3 border rounded-lg transition-all duration-300"
+            :class="getMemberLocationStatus(memberEmail).isOnline ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'"
           >
             <div class="flex items-center justify-between mb-2">
               <div class="flex items-center">
                 <div 
-                  class="w-3 h-3 rounded-full mr-3" 
+                  class="w-3 h-3 rounded-full mr-3 transition-all duration-300" 
                   :class="getMemberLocationStatus(memberEmail).isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-400'"
                 ></div>
                 <div>
@@ -537,62 +547,89 @@ watch(() => relevantLocations.value, () => {
                 </div>
               </div>
               
-              <!-- BOTÓN PARA ACTIVAR/DESACTIVAR CÍRCULO -->
+              <!-- BOTÓN MEJORADO PARA ACTIVAR/DESACTIVAR CÍRCULO -->
               <div class="flex items-center gap-2">
                 <div class="text-xs text-gray-500">
-                  {{ getMemberLocationStatus(memberEmail).hasLocation ? 
-                    (getMemberLocationStatus(memberEmail).isOnline ? 'Activo' : 'Inactivo') : 
-                    'Sin ubicación' 
-                  }}
+                  {{ getMemberLocationStatus(memberEmail).isOnline ? 'Activo' : 'Inactivo' }}
                 </div>
                 <button
                   @click="toggleMemberCircle(memberEmail)"
                   :disabled="circleActionLoading === memberEmail"
                   :class="[
-                    'px-2 py-1 text-xs rounded-md transition-colors',
-                    getMemberLocationStatus(memberEmail).isOnline 
-                      ? 'bg-red-500 hover:bg-red-600 text-white' 
-                      : 'bg-green-500 hover:bg-green-600 text-white'
+                    'px-3 py-1 text-xs rounded-md font-medium transition-all duration-300 min-w-[80px]',
+                    circleActionLoading === memberEmail 
+                      ? 'bg-gray-400 text-white cursor-not-allowed' 
+                      : getMemberLocationStatus(memberEmail).isOnline 
+                      ? 'bg-red-500 hover:bg-red-600 text-white shadow-sm' 
+                      : 'bg-green-500 hover:bg-green-600 text-white shadow-sm'
                   ]"
                 >
-                  {{ circleActionLoading === memberEmail ? '...' : 
-                    (getMemberLocationStatus(memberEmail).isOnline ? 'Desactivar' : 'Activar') }}
+                  {{ circleActionLoading === memberEmail ? '⏳' : 
+                    (getMemberLocationStatus(memberEmail).isOnline ? '🚫 Desactivar' : '🎯 Activar') }}
                 </button>
               </div>
             </div>
             
-            <!-- Información de ubicación si existe -->
-            <div v-if="getMemberLocationStatus(memberEmail).hasLocation" class="text-xs text-gray-500 space-y-1">
+            <!-- Información de ubicación MEJORADA -->
+            <div v-if="getMemberLocationStatus(memberEmail).hasLocation" class="text-xs text-gray-500 space-y-1 bg-white rounded p-2">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center">
+                  <span class="w-2 h-2 rounded-full mr-2" 
+                        :class="getMemberLocationStatus(memberEmail).isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-400'"></span>
+                  {{ getMemberLocationStatus(memberEmail).isOnline ? '🟢 En línea' : '⚫ Desconectado' }}
+                </div>
+                <span class="text-xs font-mono">
+                  {{ getMemberLocationStatus(memberEmail).isOnline ? '🟢' : '⚫' }}
+                </span>
+              </div>
               <div class="flex items-center">
-                <span class="w-2 h-2 rounded-full mr-2" 
-                      :class="getMemberLocationStatus(memberEmail).isOnline ? 'bg-green-500' : 'bg-gray-400'"></span>
-                {{ getMemberLocationStatus(memberEmail).isOnline ? 'En línea' : 'Desconectado' }}
+                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                {{ formatTime(getMemberLocationStatus(memberEmail).lastUpdate) }}
               </div>
-              <div>
-                📅 {{ formatTime(getMemberLocationStatus(memberEmail).lastUpdate) }}
-              </div>
-              <div v-if="getMemberLocationDetails(memberEmail)">
-                📍 {{ getMemberLocationDetails(memberEmail)?.lat.toFixed(4) }}, 
+              <div v-if="getMemberLocationDetails(memberEmail)" class="flex items-center">
+                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                </svg>
+                {{ getMemberLocationDetails(memberEmail)?.lat.toFixed(4) }}, 
                 {{ getMemberLocationDetails(memberEmail)?.lng.toFixed(4) }}
               </div>
+              <div v-if="getMemberLocationDetails(memberEmail)?.accuracy" class="flex items-center">
+                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                Precisión: {{ Math.round(getMemberLocationDetails(memberEmail)?.accuracy || 0) }}m
+              </div>
+            </div>
+            
+            <!-- Estado sin ubicación -->
+            <div v-else class="text-xs text-gray-400 bg-gray-100 rounded p-2 text-center">
+              📍 Sin ubicación disponible
             </div>
           </div>
         </div>
 
         <!-- Sin miembros -->
-        <div v-if="selectedGroup && selectedGroup.members.length <= 1" class="text-center py-4 text-gray-500">
+        <div v-if="selectedGroup && selectedGroup.members.length <= 1" class="text-center py-8 text-gray-500">
+          <svg class="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+          </svg>
           <p class="text-sm">No hay otros miembros en el grupo</p>
           <p class="text-xs">Invita miembros para ver sus ubicaciones</p>
         </div>
 
         <!-- Solo mi ubicación -->
-        <div v-if="!selectedGroup && !myLocation" class="text-center py-4 text-gray-500">
+        <div v-if="!selectedGroup && !myLocation" class="text-center py-8 text-gray-500">
+          <svg class="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+          </svg>
           <p class="text-sm">Activa tu GPS para ver tu ubicación</p>
         </div>
       </div>
     </div>
 
-    <!-- Resto del template (mapa y modales) permanece igual -->
+    <!-- Panel del mapa -->
     <div class="flex-1 relative">
       <div ref="mapContainer" class="w-full h-full"></div>
       
@@ -603,28 +640,48 @@ watch(() => relevantLocations.value, () => {
         </div>
       </div>
 
+      <!-- Panel de información MEJORADO -->
       <div class="absolute top-4 right-4 bg-white rounded-lg shadow-lg p-4 max-w-xs">
-        <h4 class="font-semibold text-gray-800 mb-2">Información</h4>
+        <h4 class="font-semibold text-gray-800 mb-3 flex items-center">
+          <svg class="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+          Información
+        </h4>
         <div class="space-y-2 text-sm">
-          <div class="flex items-center">
-            <div class="w-4 h-4 bg-red-500 rounded-full border-2 border-white shadow mr-2"></div>
-            <span class="text-gray-600">Tu ubicación</span>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center">
+              <div class="w-4 h-4 bg-red-500 rounded-full border-2 border-white shadow mr-2"></div>
+              <span class="text-gray-600">Tu ubicación</span>
+            </div>
+            <span class="text-xs text-gray-500">{{ myLocation ? '🟢' : '⚫' }}</span>
           </div>
-          <div class="flex items-center">
-            <div class="w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow mr-2"></div>
-            <span class="text-gray-600">Miembros del grupo</span>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center">
+              <div class="w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow mr-2"></div>
+              <span class="text-gray-600">Miembros del grupo</span>
+            </div>
+            <span class="text-xs text-gray-500">{{ groupLocations.filter(l => l.isOnline).length }}</span>
           </div>
-          <div class="text-xs text-gray-500 mt-2">
-            Total ubicaciones: {{ relevantLocations.length }}
-          </div>
-          <div class="text-xs text-gray-500">
-            Grupo activo: {{ selectedGroup?.name || 'Ninguno' }}
+          <div class="border-t border-gray-200 pt-2 space-y-1">
+            <div class="text-xs text-gray-500 flex justify-between">
+              <span>Total ubicaciones:</span>
+              <span class="font-medium">{{ relevantLocations.length }}</span>
+            </div>
+            <div class="text-xs text-gray-500 flex justify-between">
+              <span>Grupo activo:</span>
+              <span class="font-medium">{{ selectedGroup?.name || 'Ninguno' }}</span>
+            </div>
+            <div class="text-xs text-gray-500 flex justify-between">
+              <span>Miembros online:</span>
+              <span class="font-medium text-green-600">{{ groupLocations.filter(l => l.isOnline).length }}</span>
+            </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Modal de confirmación para eliminar grupo (permanece igual) -->
+    <!-- Modal de confirmación para eliminar grupo -->
     <div v-if="showDeleteModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
         <h3 class="text-lg font-semibold text-gray-800 mb-4">Eliminar Grupo</h3>

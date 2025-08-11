@@ -387,17 +387,22 @@ export const updateUserLocation = async (userId: string, locationData: {
 }): Promise<void> => {
   try {
     const locationRef = doc(db, 'ubicaciones', userId);
+    
+    // USAR setDoc CON MERGE TRUE para actualizar el mismo documento
     await setDoc(locationRef, {
       userId,
       ...locationData,
       timestamp: new Date(),
       isOnline: true
     }, { merge: true });
+    
+    console.log('✅ Ubicación actualizada para userId:', userId);
   } catch (error) {
-    console.error('Error updating user location:', error);
+    console.error('❌ Error updating user location:', error);
     throw error;
   }
 };
+
 
 export const getGroupMembersLocations = async (groupId: string): Promise<FirebaseUbicacion[]> => {
   try {
@@ -466,20 +471,35 @@ export const getMyLocation = async (userId: string): Promise<FirebaseUbicacion |
   }
 };
 
-export const setUserOffline = async (userId: string): Promise<void> => {
+  export const setUserOffline = async (userId: string): Promise<void> => {
   try {
     const locationRef = doc(db, 'ubicaciones', userId);
-    await updateDoc(locationRef, {
-      isOnline: false,
-      timestamp: new Date()
-    });
     
-    await updateUserStatus(userId, 'offline');
+    // Verificar si el documento existe antes de actualizarlo
+    const locationDoc = await getDoc(locationRef);
+    
+    if (locationDoc.exists()) {
+      await updateDoc(locationRef, {
+        isOnline: false,
+        timestamp: new Date()
+      });
+      console.log('✅ Usuario marcado como offline:', userId);
+    }
+
+
+    const userRef = doc(db, 'users', userId);
+    const userDoc = await getDoc(userRef);
+    
+    if (userDoc.exists()) {
+      await updateDoc(userRef, {
+        status: 'offline',
+        lastSeen: new Date()
+      });
+    }
   } catch (error) {
-    console.error('Error setting user offline:', error);
+    console.error('❌ Error setting user offline:', error);
   }
 };
-
 // Listeners en tiempo real
 export const subscribeToUsers = (callback: (users: FirebaseUser[]) => void) => {
   return onSnapshot(collection(db, 'users'), (snapshot) => {
@@ -514,8 +534,6 @@ export const subscribeToGroupLocations = (groupId: string, callback: (locations:
 
   const fetchLocations = async () => {
     try {
-      console.log('📊 Obteniendo datos del grupo...');
-
       // 1. Obtener miembros del grupo
       const groupDoc = await getDoc(doc(db, 'circulos', groupId));
       if (!groupDoc.exists()) {
@@ -539,22 +557,30 @@ export const subscribeToGroupLocations = (groupId: string, callback: (locations:
 
       // 3. Obtener TODOS los usuarios
       const usersSnapshot = await getDocs(collection(db, 'users'));
-      const usersMap = new Map();
+      const emailToUserIdMap = new Map<string, { userId: string, userData: any }>();
+      
       usersSnapshot.docs.forEach(userDoc => {
         const userData = userDoc.data();
-        usersMap.set(userDoc.id, userData); // userId -> userData
-        usersMap.set(userData.email, { ...userData, id: userDoc.id }); // email -> userData + id
+        if (userData.email && memberEmails.includes(userData.email)) {
+          emailToUserIdMap.set(userData.email, {
+            userId: userDoc.id,
+            userData: userData
+          });
+        }
       });
       
-      console.log('👤 Total usuarios encontrados:', usersMap.size / 2);
+      console.log('📊 Usuarios mapeados:', emailToUserIdMap.size);
 
       // 4. Filtrar ubicaciones de miembros del grupo
       const locations: FirebaseUbicacion[] = [];
       
-      ubicacionesSnapshot.docs.forEach(locationDoc => {
-        const locationData = locationDoc.data();
-        const userId = locationDoc.id;
-        
+      for (const [email, { userId, userData }] of emailToUserIdMap.entries()) {
+        try {
+          const locationDoc = await getDoc(doc(db, 'ubicaciones', userId));
+          
+          if (locationDoc.exists()) {
+          const locationData = locationDoc.data();
+
         console.log('🔍 Procesando ubicación de userId:', userId, locationData);
 
         // Buscar el usuario correspondiente
@@ -563,35 +589,37 @@ export const subscribeToGroupLocations = (groupId: string, callback: (locations:
         if (userData && memberEmails.includes(userData.email)) {
           console.log('✅ Usuario es miembro del grupo:', userData.email);
 
-          // Verificar que la ubicación tenga coordenadas válidas
-          if (locationData.lat && locationData.lng) {
-            const location: FirebaseUbicacion = {
-              id: locationDoc.id,
-              userId: userId,
-              userEmail: userData.email,
-              userName: userData.name || 'Usuario',
-              lat: Number(locationData.lat),
-              lng: Number(locationData.lng),
-              accuracy: locationData.accuracy,
-              timestamp: locationData.timestamp,
-              isOnline: locationData.isOnline || false
-            };
-            
+        if (locationData.lat && locationData.lng) {
+              const location: FirebaseUbicacion = {
+                id: locationDoc.id,
+                userId: userId,
+                userEmail: email,
+                userName: userData.name || email.split('@')[0],
+                lat: Number(locationData.lat),
+                lng: Number(locationData.lng),
+                accuracy: locationData.accuracy,
+                timestamp: locationData.timestamp,
+                isOnline: locationData.isOnline || false
+              };
+            try {
             locations.push(location);
-            console.log('📍 Ubicación agregada:', userData.name, location.lat, location.lng);
+              console.log('📍 Ubicación válida:', userData.name, 'Online:', location.isOnline);
+            } else {
+              console.log('⚠️ Ubicación sin coordenadas:', email);
+            }
           } else {
-            console.log('⚠️ Ubicación sin coordenadas válidas para:', userData.email);
+            console.log('❌ No hay documento de ubicación para:', email);
           }
-        } else {
-          console.log('❌ Usuario no es miembro del grupo o no encontrado:', userId);
+        } catch (err) {
+          console.error('❌ Error obteniendo ubicación para', email, ':', err);
         }
-      });
+      }
       
-      console.log('🎯 Total ubicaciones válidas encontradas:', locations.length);
+      console.log('🎯 Total ubicaciones encontradas:', locations.length);
       callback(locations);
       
     } catch (error) {
-      console.error('❌ Error obteniendo ubicaciones:', error);
+      console.error('❌ Error general obteniendo ubicaciones:', error);
       callback([]);
     }
   };
@@ -605,14 +633,14 @@ export const subscribeToGroupLocations = (groupId: string, callback: (locations:
     fetchLocations();
   });
 
-  const unsubscribeLocations = onSnapshot(collection(db, 'ubicaciones'), () => {
-    console.log('🔄 Ubicaciones actualizadas, refrescando...');
+  const unsubscribeLocations = onSnapshot(collection(db, 'ubicaciones'), (snapshot) => {
+    console.log('🔄 Cambios en ubicaciones detectados');
     fetchLocations();
   });
 
   // Retornar función de cleanup
   return () => {
-    console.log('🧹 Limpiando suscripciones');
+    console.log('🧹 Limpiando suscripciones de grupo:', groupId);
     unsubscribeGroup();
     unsubscribeLocations();
   };
@@ -720,11 +748,21 @@ export const activateMemberCircle = async (userEmail: string): Promise<void> => 
     const userData = userDoc.data();
     const userId = userDoc.id;
     
+    // IMPORTANTE: Usar el mismo userId como documento ID
     const locationRef = doc(db, 'ubicaciones', userId);
+    
+    // Verificar si ya existe el documento
     const locationDoc = await getDoc(locationRef);
     
-    if (!locationDoc.exists()) {
-      // Crear ubicación inicial con coordenadas de la UTT
+    if (locationDoc.exists()) {
+      // Solo actualizar isOnline si ya existe
+      await updateDoc(locationRef, {
+        isOnline: true,
+        timestamp: new Date()
+      });
+      console.log('✅ Círculo reactivado para:', userData.name);
+    } else {
+      // Crear nuevo documento solo si no existe
       await setDoc(locationRef, {
         userId: userId,
         userEmail: userEmail,
@@ -735,16 +773,7 @@ export const activateMemberCircle = async (userEmail: string): Promise<void> => 
         timestamp: new Date(),
         isOnline: true
       });
-      
       console.log('✅ Círculo creado para:', userData.name);
-    } else {
-      // Activar ubicación existente
-      await updateDoc(locationRef, {
-        isOnline: true,
-        timestamp: new Date()
-      });
-      
-      console.log('✅ Círculo activado para:', userData.name);
     }
     
   } catch (error) {
@@ -753,6 +782,7 @@ export const activateMemberCircle = async (userEmail: string): Promise<void> => 
   }
 };
 
+// FUNCIÓN CORREGIDA para desactivar círculo
 export const deactivateMemberCircle = async (userEmail: string): Promise<void> => {
   try {
     console.log('🚫 Desactivando círculo para:', userEmail);
@@ -760,17 +790,19 @@ export const deactivateMemberCircle = async (userEmail: string): Promise<void> =
     const userQuery = query(collection(db, 'users'), where('email', '==', userEmail));
     const userSnapshot = await getDocs(userQuery);
     
-    if (!userSnapshot.empty) {
-      const userId = userSnapshot.docs[0].id;
-      const locationRef = doc(db, 'ubicaciones', userId);
-      
-      await updateDoc(locationRef, {
-        isOnline: false,
-        timestamp: new Date()
-      });
-      
-      console.log('✅ Círculo desactivado para:', userEmail);
+    if (userSnapshot.empty) {
+      throw new Error('Usuario no encontrado');
     }
+    
+    const userId = userSnapshot.docs[0].id;
+    const locationRef = doc(db, 'ubicaciones', userId);
+    
+    await updateDoc(locationRef, {
+      isOnline: false,
+      timestamp: new Date()
+    });
+    
+    console.log('✅ Círculo desactivado para:', userEmail);
     
   } catch (error) {
     console.error('❌ Error desactivando círculo:', error);
