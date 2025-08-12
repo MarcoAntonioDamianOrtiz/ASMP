@@ -17,6 +17,7 @@ import MainNav from '../../components/MainNav.vue'
 import LayoutView from './LayoutView.vue'
 import { useUserStore } from '@/stores/user'
 
+
 const userStore = useUserStore()
 const userGroups = ref<FirebaseGroup[]>([])
 const alerts = ref<FirebaseAlert[]>([])
