@@ -237,23 +237,6 @@ onUnmounted(async () => {
   // Limpiar ubicación de Firebase
   await cleanupLocation()
 })
-
-const mostrarZonasRiesgo = async () => {
-  try {
-    console.log("🗺️ Cargando zonas de riesgo...")
-    const response = await fetch('/geojson/tlaxcala_zonas.geojson')
-    const geoJsonData = JSON.parse(await response.text())
-    console.log("✅ Datos cargados:", geoJsonData.features?.length, "zonas")
-    console.log("📊 Zonas encontradas:", geoJsonData.features.map(f => ({
-      nombre: f.properties.NOMLOC,
-      codigo: f.properties.CVE_ENT + f.properties.CVE_MUN
-    })))
-    alert(`✅ ${geoJsonData.features?.length || 0} zonas de riesgo cargadas. Ver consola para detalles.`)
-  } catch (error) {
-    console.error("❌ Error:", error)
-    alert("Error cargando zonas")
-  }
-}
 </script>
 
 <template>
@@ -305,11 +288,6 @@ const mostrarZonasRiesgo = async () => {
       >
         🔄 Reintentar
       </button>
-      <button
-      @click="mostrarZonasRiesgo"
-      class="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white text-sm rounded-lg transition-colors flex items-center gap-2">
-  🗺️ Ver Zonas de Riesgo
-</button>
     </div>
 
     <!-- Estado actual MEJORADO -->

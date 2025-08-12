@@ -30,6 +30,13 @@ const deleting = ref(false)
 
 const circleActionLoading = ref<string | null>(null)
 
+// NUEVAS VARIABLES PARA ZONAS DE RIESGO
+const showZonasRiesgo = ref(false)
+const zonasRiesgoLayer = ref<any>(null)
+const loadingZonas = ref(false)
+const zonasData = ref<any>(null)
+const currentPopup = ref<any>(null) // NUEVA VARIABLE PARA CONTROLAR POPUP ÚNICO
+
 // Tu token de Mapbox
 const MAPBOX_TOKEN = 'pk.eyJ1IjoiYW50b255MjcwNCIsImEiOiJjbWQweGg4d2IxOGdnMmtwemp3Nnp0YmIxIn0.-Hm3lVWw6U-NE10a0u2U2A'
 
@@ -41,6 +48,268 @@ const getUserColor = (name: string): string => {
     return a & a
   }, 0)
   return colors[Math.abs(hash) % colors.length]
+}
+
+// NUEVA FUNCIÓN PARA CARGAR Y MOSTRAR ZONAS DE RIESGO
+const toggleZonasRiesgo = async () => {
+  if (!map.value) {
+    console.log('Mapa no disponible')
+    return
+  }
+
+  if (showZonasRiesgo.value) {
+    // Ocultar zonas de riesgo
+    hideZonasRiesgo()
+  } else {
+    // Mostrar zonas de riesgo
+    await showZonasRiesgoOnMap()
+  }
+}
+
+const showZonasRiesgoOnMap = async () => {
+  if (!map.value) return
+
+  loadingZonas.value = true
+  
+  try {
+    console.log("🗺️ Cargando zonas de riesgo...")
+    
+    const response = await fetch('/geojson/tlaxcala_zonas.geojson')
+    const geoJsonData = await response.json()
+    
+    console.log("✅ Datos cargados:", geoJsonData.features?.length, "zonas")
+    console.log("📊 Zonas encontradas:", geoJsonData.features.map((f: any) => ({
+      nombre: f.properties.NOMLOC,
+      codigo: f.properties.CVE_ENT + f.properties.CVE_MUN
+    })))
+    
+    zonasData.value = geoJsonData
+    
+    // Agregar fuente de datos al mapa
+    if (!map.value.getSource('zonas-riesgo')) {
+      map.value.addSource('zonas-riesgo', {
+        type: 'geojson',
+        data: geoJsonData
+      })
+    }
+
+    // Agregar capa de polígonos (relleno) - ADAPTADO A TU ESTRUCTURA
+    if (!map.value.getLayer('zonas-riesgo-fill')) {
+      map.value.addLayer({
+        id: 'zonas-riesgo-fill',
+        type: 'fill',
+        source: 'zonas-riesgo',
+        paint: {
+          'fill-color': [
+            'case',
+            // Usar el campo 'riesgo' de tu estructura (puede ser null)
+            ['==', ['get', 'riesgo'], 'ALTO'], '#ef4444',      // Rojo para riesgo alto
+            ['==', ['get', 'riesgo'], 'MEDIO'], '#f59e0b',     // Amarillo para riesgo medio  
+            ['==', ['get', 'riesgo'], 'BAJO'], '#10b981',      // Verde para riesgo bajo
+            // Si total_delitos existe, usar gradiente basado en número de delitos
+            ['!=', ['get', 'total_delitos'], null], [
+              'interpolate',
+              ['linear'],
+              ['get', 'total_delitos'],
+              0, '#10b981',    // Verde para 0 delitos
+              10, '#f59e0b',   // Amarillo para delitos medios
+              50, '#ef4444'    // Rojo para muchos delitos
+            ],
+            '#8b5cf6'  // Morado por defecto para áreas sin clasificar
+          ],
+          'fill-opacity': 0.4
+        }
+      })
+    }
+
+    // Agregar capa de bordes - ADAPTADO
+    if (!map.value.getLayer('zonas-riesgo-line')) {
+      map.value.addLayer({
+        id: 'zonas-riesgo-line',
+        type: 'line',
+        source: 'zonas-riesgo',
+        paint: {
+          'line-color': [
+            'case',
+            ['==', ['get', 'riesgo'], 'ALTO'], '#dc2626',
+            ['==', ['get', 'riesgo'], 'MEDIO'], '#d97706',
+            ['==', ['get', 'riesgo'], 'BAJO'], '#059669',
+            ['!=', ['get', 'total_delitos'], null], '#7c3aed', // Morado para zonas con datos de delitos
+            '#4b5563'  // Gris por defecto
+          ],
+          'line-width': 2,
+          'line-opacity': 0.9
+        }
+      })
+    }
+
+    // Agregar eventos de click y hover - ADAPTADO A TU ESTRUCTURA
+    map.value.on('click', 'zonas-riesgo-fill', (e: any) => {
+      const properties = e.features[0].properties
+      
+      // CERRAR POPUP ANTERIOR SI EXISTE
+      if (currentPopup.value) {
+        currentPopup.value.remove()
+        currentPopup.value = null
+      }
+      
+      // Determinar el color basado en tu estructura de datos
+      let colorZona = '#8b5cf6' // Morado por defecto
+      let nivelRiesgo = 'Sin clasificar'
+      
+      if (properties.riesgo) {
+        switch(properties.riesgo) {
+          case 'ALTO':
+            colorZona = '#ef4444'
+            nivelRiesgo = 'ALTO'
+            break
+          case 'MEDIO':
+            colorZona = '#f59e0b'
+            nivelRiesgo = 'MEDIO'
+            break
+          case 'BAJO':
+            colorZona = '#10b981'
+            nivelRiesgo = 'BAJO'
+            break
+        }
+      } else if (properties.total_delitos !== null) {
+        const delitos = parseInt(properties.total_delitos)
+        if (delitos >= 50) {
+          colorZona = '#ef4444'
+          nivelRiesgo = `ALTO (${delitos} delitos)`
+        } else if (delitos >= 10) {
+          colorZona = '#f59e0b' 
+          nivelRiesgo = `MEDIO (${delitos} delitos)`
+        } else {
+          colorZona = '#10b981'
+          nivelRiesgo = `BAJO (${delitos} delitos)`
+        }
+      }
+      
+      // CREAR NUEVO POPUP Y GUARDARLO EN LA REFERENCIA
+      currentPopup.value = new (window as any).mapboxgl.Popup({
+        offset: [0, -10],
+        closeButton: true,
+        closeOnClick: false,
+        maxWidth: '320px',
+        className: 'zona-riesgo-popup'
+      })
+        .setLngLat(e.lngLat)
+        .setHTML(`
+          <div class="p-3 max-w-[300px]">
+            <h3 class="font-bold text-gray-800 mb-2 text-sm flex items-center">
+              🏘️ ${properties.NOMLOC || 'Sin nombre'}
+            </h3>
+            
+            <div class="grid grid-cols-2 gap-2 text-xs mb-3">
+              <div class="bg-gray-50 p-2 rounded">
+                <div class="text-gray-600 mb-1">Riesgo</div>
+                <div class="flex items-center">
+                  <span class="inline-block w-2 h-2 rounded-full mr-1" style="background-color: ${colorZona}"></span>
+                  <span class="font-medium text-gray-800">${nivelRiesgo.replace(/\s*\(\d+\s*delitos\)/, '')}</span>
+                </div>
+              </div>
+              
+              ${properties.total_delitos !== null ? 
+                `<div class="bg-red-50 p-2 rounded">
+                  <div class="text-gray-600 mb-1">Delitos</div>
+                  <div class="font-medium text-red-700">${properties.total_delitos}</div>
+                </div>` : 
+                `<div class="bg-gray-50 p-2 rounded">
+                  <div class="text-gray-600 mb-1">Delitos</div>
+                  <div class="text-gray-500">Sin datos</div>
+                </div>`
+              }
+            </div>
+            
+            <div class="space-y-1 text-xs border-t pt-2">
+              <div class="flex justify-between">
+                <span class="text-gray-600">Tipo:</span>
+                <span class="text-gray-800">${
+                  properties.TIPO === 'R' ? '🌾 Rural' : 
+                  properties.TIPO === 'U' ? '🏢 Urbano' : 
+                  '❓ No definido'
+                }</span>
+              </div>
+              
+              <div class="flex justify-between">
+                <span class="text-gray-600">Estado:</span>
+                <span class="text-gray-800">${
+                  properties.CONDICION === 'H' ? '✅ Habitada' :
+                  properties.CONDICION === 'D' ? '❌ Deshabitada' :
+                  '❓ No definido'
+                }</span>
+              </div>
+              
+              ${properties.CVE_ENT && properties.CVE_MUN ? 
+                `<div class="flex justify-between">
+                  <span class="text-gray-600">Código:</span>
+                  <span class="text-gray-500 font-mono">${properties.CVE_ENT}-${properties.CVE_MUN}-${properties.CVE_LOC || '000'}</span>
+                </div>` : 
+                ''
+              }
+            </div>
+          </div>
+        `)
+        .addTo(map.value)
+
+      // LIMPIAR REFERENCIA CUANDO SE CIERRE EL POPUP
+      currentPopup.value.on('close', () => {
+        currentPopup.value = null
+      })
+    })
+
+
+    // Cambiar cursor al hover
+    map.value.on('mouseenter', 'zonas-riesgo-fill', () => {
+      map.value.getCanvas().style.cursor = 'pointer'
+    })
+
+    map.value.on('mouseleave', 'zonas-riesgo-fill', () => {
+      map.value.getCanvas().style.cursor = ''
+    })
+
+    showZonasRiesgo.value = true
+    
+    console.log("✅ Zonas de riesgo mostradas en el mapa")
+    
+  } catch (error) {
+    console.error("❌ Error cargando zonas de riesgo:", error)
+    alert("Error al cargar las zonas de riesgo: " + error.message)
+  } finally {
+    loadingZonas.value = false
+  }
+}
+
+const hideZonasRiesgo = () => {
+  if (!map.value) return
+
+  try {
+    // CERRAR POPUP SI ESTÁ ABIERTO
+    if (currentPopup.value) {
+      currentPopup.value.remove()
+      currentPopup.value = null
+    }
+    
+    // Remover capas si existen
+    if (map.value.getLayer('zonas-riesgo-fill')) {
+      map.value.removeLayer('zonas-riesgo-fill')
+    }
+    if (map.value.getLayer('zonas-riesgo-line')) {
+      map.value.removeLayer('zonas-riesgo-line')
+    }
+    
+    // Remover fuente si existe
+    if (map.value.getSource('zonas-riesgo')) {
+      map.value.removeSource('zonas-riesgo')
+    }
+    
+    showZonasRiesgo.value = false
+    console.log("🙈 Zonas de riesgo ocultadas")
+    
+  } catch (error) {
+    console.error("❌ Error ocultando zonas:", error)
+  }
 }
 
 // Computed para mostrar ubicaciones relevantes
@@ -304,6 +573,7 @@ const createMap = () => {
   })
 }
 
+// [Resto del código se mantiene igual...]
 let unsubscribeMyLocation: (() => void) | null = null
 let unsubscribeGroupLocations: (() => void) | null = null
 
@@ -321,7 +591,7 @@ onMounted(async () => {
   })
 })
 
-// FUNCIONES CORREGIDAS PARA MANEJO DE ESTADOS
+// [El resto de las funciones se mantienen iguales...]
 const getMemberLocationStatus = (memberEmail: string) => {
   const memberLocation = groupLocations.value.find(loc => loc.userEmail === memberEmail)
   
@@ -358,7 +628,6 @@ const formatTime = (timestamp: any) => {
   return date.toLocaleDateString()
 }
 
-// FUNCIÓN MEJORADA para activar/desactivar círculo
 const toggleMemberCircle = async (memberEmail: string) => {
   const status = getMemberLocationStatus(memberEmail)
   circleActionLoading.value = memberEmail
@@ -372,7 +641,6 @@ const toggleMemberCircle = async (memberEmail: string) => {
       await activateMemberCircle(memberEmail)
     }
     
-    // Esperar un poco más para asegurar la actualización
     setTimeout(() => {
       refreshGroupLocations()
     }, 1500)
@@ -383,26 +651,22 @@ const toggleMemberCircle = async (memberEmail: string) => {
   } finally {
     setTimeout(() => {
       circleActionLoading.value = null
-    }, 2000) // Más tiempo para evitar clicks múltiples
+    }, 2000)
   }
 }
 
-// FUNCIÓN MEJORADA para refrescar ubicaciones
 const refreshGroupLocations = () => {
   if (props.selectedGroup) {
     console.log('🔄 Refrescando ubicaciones manualmente para grupo:', props.selectedGroup.name)
     
-    // Limpiar ubicaciones actuales
     groupLocations.value = []
     
-    // Si ya hay una suscripción, limpiarla y recrearla
     if (unsubscribeGroupLocations) {
       console.log('🧹 Limpiando suscripción anterior')
       unsubscribeGroupLocations()
       unsubscribeGroupLocations = null
     }
     
-    // Crear nueva suscripción después de un delay
     setTimeout(() => {
       console.log('🔄 Creando nueva suscripción')
       unsubscribeGroupLocations = subscribeToGroupLocations(props.selectedGroup!.id, (locations) => {
@@ -422,21 +686,17 @@ onUnmounted(() => {
   }
 })
 
-// WATCH MEJORADO para reaccionar cuando cambie el grupo seleccionado
 watch(() => props.selectedGroup, (newGroup, oldGroup) => {
   console.log('🔄 Grupo seleccionado cambió de', oldGroup?.name, 'a', newGroup?.name)
   
-  // Limpiar suscripción anterior
   if (unsubscribeGroupLocations) {
     console.log('🧹 Limpiando suscripción del grupo anterior')
     unsubscribeGroupLocations()
     unsubscribeGroupLocations = null
   }
   
-  // Limpiar ubicaciones del grupo anterior
   groupLocations.value = []
   
-  // Si hay un grupo seleccionado, suscribirse a sus ubicaciones
   if (newGroup) {
     console.log('📡 Suscribiéndose a ubicaciones del nuevo grupo:', newGroup.id)
     setTimeout(() => {
@@ -448,7 +708,6 @@ watch(() => props.selectedGroup, (newGroup, oldGroup) => {
   }
 }, { immediate: true })
 
-// WATCH MEJORADO para actualizar marcadores cuando cambien las ubicaciones
 watch(() => relevantLocations.value, (newLocations, oldLocations) => {
   console.log('🗺️ Ubicaciones relevantes cambiaron:', newLocations.length)
   console.log('📊 Detalles:', newLocations.map(l => ({ name: l.userName, online: l.isOnline })))
@@ -493,7 +752,7 @@ watch(() => relevantLocations.value, (newLocations, oldLocations) => {
         </div>
       </div>
       
-      <!-- Lista de miembros CON CONTROLES DE CÍRCULO MEJORADOS -->
+      <!-- Lista de miembros -->
       <div class="p-4 flex-1 overflow-y-auto">
         <h4 class="font-semibold text-gray-800 mb-3 flex items-center justify-between">
           <span>{{ selectedGroup ? `Miembros de ${selectedGroup.name}` : 'Mi ubicación' }}</span>
@@ -527,7 +786,7 @@ watch(() => relevantLocations.value, (newLocations, oldLocations) => {
           </div>
         </div>
 
-        <!-- Miembros del grupo con controles MEJORADOS -->
+        <!-- Miembros del grupo -->
         <div v-if="selectedGroup" class="space-y-3">
           <div 
             v-for="memberEmail in selectedGroup.members.filter(email => email !== userStore.user?.email)" 
@@ -547,7 +806,6 @@ watch(() => relevantLocations.value, (newLocations, oldLocations) => {
                 </div>
               </div>
               
-              <!-- BOTÓN MEJORADO PARA ACTIVAR/DESACTIVAR CÍRCULO -->
               <div class="flex items-center gap-2">
                 <div class="text-xs text-gray-500">
                   {{ getMemberLocationStatus(memberEmail).isOnline ? 'Activo' : 'Inactivo' }}
@@ -570,7 +828,7 @@ watch(() => relevantLocations.value, (newLocations, oldLocations) => {
               </div>
             </div>
             
-            <!-- Información de ubicación MEJORADA -->
+            <!-- Información de ubicación -->
             <div v-if="getMemberLocationStatus(memberEmail).hasLocation" class="text-xs text-gray-500 space-y-1 bg-white rounded p-2">
               <div class="flex items-center justify-between">
                 <div class="flex items-center">
@@ -640,6 +898,66 @@ watch(() => relevantLocations.value, (newLocations, oldLocations) => {
         </div>
       </div>
 
+      <!-- BOTÓN PARA MOSTRAR ZONAS DE RIESGO -->
+      <div class="absolute top-4 left-4 z-10">
+        <button
+          @click="toggleZonasRiesgo"
+          :disabled="loadingZonas"
+          :class="[
+            'px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow-lg flex items-center gap-2',
+            showZonasRiesgo 
+              ? 'bg-red-500 hover:bg-red-600 text-white' 
+              : 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-200'
+          ]"
+        >
+          {{ loadingZonas ? '⏳' : (showZonasRiesgo ? '🙈' : '🗺️') }}
+          <span class="text-sm">
+            {{ loadingZonas ? 'Cargando...' : 
+               (showZonasRiesgo ? 'Ocultar Zonas' : 'Ver Zonas de Riesgo') }}
+          </span>
+        </button>
+      </div>
+
+      <!-- LEYENDA FLOTANTE MEJORADA -->
+      <div v-if="showZonasRiesgo" class="absolute top-20 left-4 bg-white/95 backdrop-blur-sm rounded-lg shadow-xl border p-3 z-20 max-w-[180px]">
+        <h4 class="font-semibold text-gray-800 mb-2 text-xs flex items-center">
+          🏷️ Zonas de Riesgo
+        </h4>
+        <div class="space-y-1 text-xs">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center">
+              <div class="w-3 h-3 bg-red-500 rounded mr-2"></div>
+              <span class="text-gray-700">Alto</span>
+            </div>
+            <span class="text-red-600 font-mono text-xs">🔴</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center">
+              <div class="w-3 h-3 bg-yellow-500 rounded mr-2"></div>
+              <span class="text-gray-700">Medio</span>
+            </div>
+            <span class="text-yellow-600 font-mono text-xs">🟡</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center">
+              <div class="w-3 h-3 bg-green-500 rounded mr-2"></div>
+              <span class="text-gray-700">Bajo</span>
+            </div>
+            <span class="text-green-600 font-mono text-xs">🟢</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center">
+              <div class="w-3 h-3 bg-purple-500 rounded mr-2"></div>
+              <span class="text-gray-700">Delitos</span>
+            </div>
+            <span class="text-purple-600 font-mono text-xs">🟣</span>
+          </div>
+        </div>
+        <p class="text-xs text-gray-500 mt-2 pt-2 border-t">
+          💡 Clic zona para info
+        </p>
+      </div>
+
       <!-- Panel de información MEJORADO -->
       <div class="absolute top-4 right-4 bg-white rounded-lg shadow-lg p-4 max-w-xs">
         <h4 class="font-semibold text-gray-800 mb-3 flex items-center">
@@ -663,6 +981,14 @@ watch(() => relevantLocations.value, (newLocations, oldLocations) => {
             </div>
             <span class="text-xs text-gray-500">{{ groupLocations.filter(l => l.isOnline).length }}</span>
           </div>
+          <!-- NUEVO INDICADOR DE ZONAS DE RIESGO -->
+          <div class="flex items-center justify-between">
+            <div class="flex items-center">
+              <div class="w-3 h-3 bg-purple-500 rounded border-2 border-white shadow mr-2"></div>
+              <span class="text-gray-600">Zonas de riesgo</span>
+            </div>
+            <span class="text-xs text-gray-500">{{ showZonasRiesgo ? '🟢' : '⚫' }}</span>
+          </div>
           <div class="border-t border-gray-200 pt-2 space-y-1">
             <div class="text-xs text-gray-500 flex justify-between">
               <span>Total ubicaciones:</span>
@@ -675,6 +1001,11 @@ watch(() => relevantLocations.value, (newLocations, oldLocations) => {
             <div class="text-xs text-gray-500 flex justify-between">
               <span>Miembros online:</span>
               <span class="font-medium text-green-600">{{ groupLocations.filter(l => l.isOnline).length }}</span>
+            </div>
+            <!-- NUEVA INFO DE ZONAS -->
+            <div v-if="showZonasRiesgo && zonasData" class="text-xs text-gray-500 flex justify-between">
+              <span>Zonas cargadas:</span>
+              <span class="font-medium text-purple-600">{{ zonasData.features?.length || 0 }}</span>
             </div>
           </div>
         </div>
