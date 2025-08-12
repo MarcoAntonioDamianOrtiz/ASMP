@@ -1,4 +1,3 @@
-
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useUserStore } from '@/stores/user'
@@ -61,17 +60,6 @@ const startTracking = () => {
   )
 
   console.log('✅ Rastreo GPS iniciado con watchId:', watchId.value)
-}
-
-// Función para detener el rastreo
-const stopTracking = () => {
-  if (watchId.value !== null) {
-    navigator.geolocation.clearWatch(watchId.value)
-    console.log('⏹️ Rastreo GPS detenido, watchId:', watchId.value)
-    watchId.value = null
-  }
-  isTracking.value = false
-  error.value = null
 }
 
 // FUNCIÓN CORREGIDA para actualizar la ubicación
@@ -169,6 +157,59 @@ const getLocationOnce = () => {
   )
 }
 
+// Función para limpiar ubicación cuando se desactiva el rastreo
+const cleanupLocation = async () => {
+  if (!userStore.user?.uid) return
+  
+  try {
+    console.log('🧹 Limpiando ubicación del usuario:', userStore.user.uid)
+    await setUserOffline(userStore.user.uid)
+    currentPosition.value = null
+    lastUpdate.value = null
+    console.log('✅ Ubicación limpiada exitosamente')
+  } catch (err: any) {
+    console.error('❌ Error al limpiar ubicación:', err)
+  }
+}
+
+// Función para detener el rastreo (versión básica)
+const stopTracking = () => {
+  if (watchId.value !== null) {
+    navigator.geolocation.clearWatch(watchId.value)
+    console.log('⏹️ Rastreo GPS detenido, watchId:', watchId.value)
+    watchId.value = null
+  }
+  isTracking.value = false
+  error.value = null
+}
+
+// FUNCIÓN MEJORADA para detener rastreo Y limpiar Firebase
+const stopTrackingImproved = async () => {
+  if (watchId.value !== null) {
+    navigator.geolocation.clearWatch(watchId.value)
+    console.log('⏹️ Rastreo GPS detenido, watchId:', watchId.value)
+    watchId.value = null
+  }
+  isTracking.value = false
+  error.value = null
+  
+  // Limpiar ubicación de Firebase
+  await cleanupLocation()
+}
+
+// Función para reintentar tracking si falla
+const retryTracking = () => {
+  console.log('🔄 Reintentando rastreo GPS...')
+  error.value = null
+  
+  if (isTracking.value) {
+    stopTracking()
+    setTimeout(() => {
+      startTracking()
+    }, 2000)
+  }
+}
+
 // Auto-iniciar el tracking cuando el componente se monta
 onMounted(() => {
   if (userStore.isAuthenticated && userStore.user?.uid) {
@@ -183,31 +224,19 @@ onMounted(() => {
   }
 })
 
-// Limpiar al desmontar el componente
-onUnmounted(() => {
+// MEJORADO: Limpiar al desmontar el componente
+onUnmounted(async () => {
   console.log('🧹 Desmontando LocationTracker')
   
-  stopTracking()
-  
-  // Marcar usuario como offline al salir
-  if (userStore.user?.uid) {
-    console.log('⚫ Marcando usuario como offline:', userStore.user.uid)
-    setUserOffline(userStore.user.uid)
+  // Detener rastreo y limpiar ubicación
+  if (watchId.value !== null) {
+    navigator.geolocation.clearWatch(watchId.value)
+    watchId.value = null
   }
+  
+  // Limpiar ubicación de Firebase
+  await cleanupLocation()
 })
-
-// Función para reintentar tracking si falla
-const retryTracking = () => {
-  console.log('🔄 Reintentando rastreo GPS...')
-  error.value = null
-  
-  if (isTracking.value) {
-    stopTracking()
-    setTimeout(() => {
-      startTracking()
-    }, 2000)
-  }
-}
 </script>
 
 <template>
@@ -234,7 +263,7 @@ const retryTracking = () => {
       </button>
       <button
         v-else
-        @click="stopTracking"
+        @click="stopTrackingImproved"
         class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-sm rounded-lg transition-colors flex items-center"
       >
         <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -324,5 +353,14 @@ const retryTracking = () => {
         <span>Debes iniciar sesión para usar el rastreo GPS</span>
       </div>
     </div>
+
+    <!-- Info adicional para desarrollo -->
+    <div v-if="userStore.user && currentPosition" class="text-xs text-gray-400 mt-4 p-2 bg-gray-50 rounded">
+      <div><strong>Debug Info:</strong></div>
+      <div>User ID: {{ userStore.user.uid }}</div>
+      <div>Watch ID: {{ watchId || 'N/A' }}</div>
+      <div>Tracking: {{ isTracking ? 'Activo' : 'Inactivo' }}</div>
+      <div>Position: {{ currentPosition.lat.toFixed(4) }}, {{ currentPosition.lng.toFixed(4) }}</div>
     </div>
+  </div>
 </template>
