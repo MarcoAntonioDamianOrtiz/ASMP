@@ -913,7 +913,7 @@ watch(() => relevantLocations.value, (newLocations, oldLocations) => {
           {{ loadingZonas ? '⏳' : (showZonasRiesgo ? '🙈' : '🗺️') }}
           <span class="text-sm">
             {{ loadingZonas ? 'Cargando...' : 
-               (showZonasRiesgo ? 'Ocultar Zonas' : 'Ver Zonas de Riesgo') }}
+              (showZonasRiesgo ? 'Ocultar Zonas' : 'Ver Zonas de Riesgo') }}
           </span>
         </button>
       </div>
