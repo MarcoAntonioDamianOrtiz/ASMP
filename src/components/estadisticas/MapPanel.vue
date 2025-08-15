@@ -10,6 +10,8 @@ import {
   type FirebaseGroup 
 } from '@/firebase'
 import { useUserStore } from '@/stores/user'
+import SyncStatusPanel from '@/components/SyncStatusPanel.vue'
+
 
 // Props para recibir datos desde el padre
 const props = defineProps<{
@@ -1012,6 +1014,11 @@ watch(() => relevantLocations.value, (newLocations, oldLocations) => {
       </div>
     </div>
 
+      <!-- NUEVO: Panel de Sincronización -->
+      <div class="absolute bottom-4 right-4 z-10">
+        <SyncStatusPanel />
+      </div>
+      
     <!-- Modal de confirmación para eliminar grupo -->
     <div v-if="showDeleteModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">

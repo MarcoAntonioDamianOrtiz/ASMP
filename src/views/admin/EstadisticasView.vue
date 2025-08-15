@@ -16,6 +16,7 @@ import LocationTracker from '@/components/locationTracker.vue' // Agregamos el t
 import MainNav from '../../components/MainNav.vue'
 import LayoutView from './LayoutView.vue'
 import { useUserStore } from '@/stores/user'
+import SyncStatusPanel from '@/components/SyncStatusPanel.vue'
 
 
 const userStore = useUserStore()
@@ -224,7 +225,7 @@ onUnmounted(() => {
     <div class="hidden">
       <LocationTracker />
     </div>
-
+  
     <div class="min-h-screen custom-green-bg pt-20">
       <!-- Header compacto -->
       <div class="bg-white border-b border-gray-200 px-6 py-4">
