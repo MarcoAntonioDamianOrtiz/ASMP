@@ -4,9 +4,14 @@ import { useUserStore } from '@/stores/user'
 import { 
   getUserSyncStatus,
   checkCollectionCompatibility,
-  cleanupOrphanedSyncData,
-  migrateExistingData
+  cleanupOrphanedSyncData
 } from '@/firebase'
+
+// IMPORTAR CORRECTAMENTE DESDE autoSync
+import {
+  migrateExistingGroupsToAutoSync,
+  checkAutoSyncHealth
+} from '@/firebase/autoSync'
 
 const userStore = useUserStore()
 
@@ -83,8 +88,9 @@ const runMigration = async () => {
   error.value = null
   
   try {
-    await migrateExistingData()
-    success.value = 'Migración completada exitosamente'
+    // USAR LA FUNCIÓN CORRECTA DE autoSync
+    const result = await migrateExistingGroupsToAutoSync()
+    success.value = `Migración completada: ${result.updated}/${result.processed} grupos actualizados`
     await refreshSyncStatus()
   } catch (err: any) {
     error.value = 'Error en migración: ' + err.message
@@ -118,8 +124,8 @@ const clearMessages = () => {
 // Auto-refresh cada 30 segundos
 let refreshInterval: NodeJS.Timeout | null = null
 
-onMounted(() => {
-  refreshSyncStatus()
+onMounted(async () => {
+  await refreshSyncStatus()
   refreshInterval = setInterval(refreshSyncStatus, 30000)
 })
 
@@ -219,7 +225,7 @@ onUnmounted(() => {
           :disabled="loading"
           class="w-full px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm rounded-lg transition-colors disabled:opacity-50"
         >
-          🚀 Migrar Datos
+          🚀 Migrar Auto-Sync
         </button>
       </div>
     </div>
@@ -244,7 +250,7 @@ onUnmounted(() => {
           <h4 class="text-xs font-medium text-gray-700">Estado por Grupo:</h4>
           <div class="max-h-24 overflow-y-auto space-y-1">
             <div v-for="group in syncStatus.webGroups.slice(0, 3)" :key="group.id" 
-                 class="flex justify-between items-center text-xs bg-gray-50 rounded p-2">
+                class="flex justify-between items-center text-xs bg-gray-50 rounded p-2">
               <span class="truncate mr-2">{{ group.name }}</span>
               <span class="text-green-600 font-medium">✓</span>
             </div>

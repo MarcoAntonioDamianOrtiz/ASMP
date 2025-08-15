@@ -15,6 +15,7 @@ import {
   subscribeToUserGroupsAutoSync,
   migrateExistingGroupsToAutoSync,
   checkAutoSyncHealth,
+  forceSyncGroup,
   type UnifiedGroup
 } from '@/firebase/autoSync'
 
@@ -73,7 +74,7 @@ const createNewGroup = async () => {
       pendingInvitations: []
     })
 
-    success.value = 'Grupo creado y sincronizado automáticamente ✅'
+    success.value = '🚀 Grupo creado y sincronizado automáticamente (Web ↔ Móvil) ✅'
     newGroup.value = { name: '', description: '' }
     showCreateGroup.value = false
     
@@ -106,7 +107,7 @@ const inviteUser = async () => {
     // Usar la función auto-sync para agregar miembro
     await addMemberAutoSync(selectedGroup.value.id, inviteForm.value.email.trim())
 
-    success.value = `${inviteForm.value.email} agregado automáticamente al grupo ✅`
+    success.value = `📱 ${inviteForm.value.email} agregado automáticamente (Web ↔ Móvil) ✅`
     inviteForm.value.email = ''
     showInviteModal.value = false
     
@@ -127,7 +128,7 @@ const respondInvitation = async (invitationId: string, response: 'accepted' | 'r
   try {
     await respondToInvitation(invitationId, response)
     success.value = response === 'accepted' 
-      ? 'Te has unido al grupo exitosamente ✅' 
+      ? '✅ Te has unido al grupo (sincronizado automáticamente)' 
       : 'Invitación rechazada'
   } catch (err: any) {
     error.value = err.message || 'Error al responder la invitación'
@@ -145,12 +146,28 @@ const removeMember = async (groupId: string, memberEmail: string) => {
 
   try {
     await removeMemberAutoSync(groupId, memberEmail)
-    success.value = 'Miembro removido automáticamente ✅'
+    success.value = '🗑️ Miembro removido automáticamente (Web ↔ Móvil) ✅'
     
     // Actualizar salud de sincronización
     await updateSyncHealth()
   } catch (err: any) {
     error.value = err.message || 'Error al remover el miembro'
+  } finally {
+    loading.value = false
+  }
+}
+
+// Forzar sincronización de un grupo específico
+const forceSyncSpecificGroup = async (groupId: string) => {
+  loading.value = true
+  error.value = null
+
+  try {
+    await forceSyncGroup(groupId)
+    success.value = '🔄 Grupo sincronizado forzadamente ✅'
+    await updateSyncHealth()
+  } catch (err: any) {
+    error.value = 'Error en sincronización forzada: ' + err.message
   } finally {
     loading.value = false
   }
@@ -176,7 +193,7 @@ const runAutoMigration = async () => {
   try {
     const result = await migrateExistingGroupsToAutoSync()
     migrationResult.value = result
-    success.value = `Migración completada: ${result.updated} grupos actualizados ✅`
+    success.value = `🎉 Migración completada: ${result.updated}/${result.processed} grupos sincronizados`
     await updateSyncHealth()
   } catch (err: any) {
     error.value = 'Error en migración: ' + err.message
@@ -202,11 +219,22 @@ const clearMessages = () => {
 // Obtener estado del grupo
 const getGroupStatus = (group: UnifiedGroup): string => {
   if (group.isAutoSynced && group.membersUids?.length) {
-    return '🟢 Sincronizado'
+    return '🟢 Sincronizado Completo'
   } else if (group.isAutoSynced) {
     return '🟡 Sincronización Parcial'
   } else {
-    return '🔴 No Sincronizado'
+    return '🔴 Sin Sincronizar'
+  }
+}
+
+// Obtener color del badge
+const getGroupBadgeColor = (group: UnifiedGroup): string => {
+  if (group.isAutoSynced && group.membersUids?.length) {
+    return 'bg-green-100 text-green-800 border-green-200'
+  } else if (group.isAutoSynced) {
+    return 'bg-yellow-100 text-yellow-800 border-yellow-200'
+  } else {
+    return 'bg-red-100 text-red-800 border-red-200'
   }
 }
 
@@ -236,9 +264,9 @@ onMounted(async () => {
   await updateSyncHealth()
 
   // Ejecutar migración automática si es necesario
-  if (autoSyncHealth.value.healthPercentage < 100) {
+  if (autoSyncHealth.value.healthPercentage < 100 && autoSyncHealth.value.totalGroups > 0) {
     console.log('🔄 Ejecutando migración automática...')
-    setTimeout(() => runAutoMigration(), 2000)
+    setTimeout(() => runAutoMigration(), 3000)
   }
 })
 
@@ -309,8 +337,18 @@ onUnmounted(() => {
         <p class="text-gray-700">
           ✅ Migración completada: 
           <span class="font-medium">{{ migrationResult.updated }}/{{ migrationResult.processed }}</span> 
-          grupos actualizados
+          grupos sincronizados automáticamente
         </p>
+      </div>
+
+      <!-- Botón de migración manual -->
+      <div v-if="autoSyncHealth.healthPercentage < 100 && autoSyncHealth.totalGroups > 0 && !migrating" class="mt-3">
+        <button
+          @click="runAutoMigration"
+          class="w-full px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm rounded-lg transition-colors"
+        >
+          🔄 Ejecutar Sincronización Automática
+        </button>
       </div>
     </div>
 
@@ -363,7 +401,7 @@ onUnmounted(() => {
     <!-- Crear grupo -->
     <div class="bg-white rounded-lg shadow p-6">
       <div class="flex justify-between items-center mb-4">
-        <h3 class="text-lg font-semibold text-gray-800">Mis Grupos (Auto-Sync) 🔄</h3>
+        <h3 class="text-lg font-semibold text-gray-800">Mis Grupos (Auto-Sync Web ↔ Móvil) 🔄</h3>
         <button
           @click="showCreateGroup = !showCreateGroup"
           class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white text-sm rounded-lg transition-colors"
@@ -386,6 +424,7 @@ onUnmounted(() => {
               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
               placeholder="Ej: Familia Pérez"
               maxlength="50"
+              @keyup.enter="createNewGroup"
             />
           </div>
           <div>
@@ -400,7 +439,7 @@ onUnmounted(() => {
           </div>
           <div class="bg-blue-50 p-3 rounded border border-blue-200">
             <p class="text-sm text-blue-800 flex items-center">
-              ℹ️ Este grupo será accesible automáticamente desde tu app móvil con la misma cuenta
+              ℹ️ Este grupo será accesible automáticamente desde tu app móvil usando UIDs de usuario
             </p>
           </div>
           <div class="flex gap-2">
@@ -427,7 +466,7 @@ onUnmounted(() => {
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
         </svg>
         <p>No tienes grupos aún</p>
-        <p class="text-sm">Crea tu primer grupo para empezar</p>
+        <p class="text-sm">Crea tu primer grupo para empezar la sincronización automática</p>
       </div>
 
       <div v-else class="space-y-4">
@@ -443,39 +482,46 @@ onUnmounted(() => {
         >
           <!-- Badge de estado -->
           <div class="absolute top-2 right-2">
-            <span class="px-2 py-1 text-xs rounded-full font-medium"
-                  :class="{
-                    'bg-green-100 text-green-800': group.isAutoSynced && group.membersUids?.length,
-                    'bg-yellow-100 text-yellow-800': group.isAutoSynced && !group.membersUids?.length,
-                    'bg-red-100 text-red-800': !group.isAutoSynced
-                  }">
+            <span class="px-2 py-1 text-xs rounded-full font-medium border"
+                  :class="getGroupBadgeColor(group)">
               {{ getGroupStatus(group) }}
             </span>
           </div>
 
-          <div class="flex justify-between items-start mb-3 pr-24">
+          <div class="flex justify-between items-start mb-3 pr-32">
             <div>
               <h4 class="font-medium text-gray-800">{{ group.name }}</h4>
               <p v-if="group.description" class="text-sm text-gray-600 mt-1">{{ group.description }}</p>
               <p class="text-xs text-gray-500 mt-1">
                 Creado por: {{ group.createdBy === userStore.user?.email ? 'Ti' : group.createdBy }}
               </p>
-              <!-- Información de sincronización -->
+              <!-- Información de sincronización mejorada -->
               <div class="mt-2 text-xs space-y-1">
                 <p v-if="group.lastSyncUpdate" class="text-purple-600">
                   🔄 Última sync: {{ new Date(group.lastSyncUpdate).toLocaleString() }}
                 </p>
                 <p v-if="group.membersUids?.length" class="text-blue-600">
-                  📱 UIDs móvil: {{ group.membersUids.length }}/{{ group.members.length }}
+                  📱 UIDs sincronizados: {{ group.membersUids.length }}/{{ group.members.length }} miembros
+                </p>
+                <p v-if="group.mobileGroupId" class="text-green-600">
+                  📱 ID Móvil: {{ group.mobileGroupId }}
                 </p>
               </div>
             </div>
-            <div class="flex gap-2">
+            <div class="flex gap-2 flex-col">
               <button
                 @click="openInviteModal(group)"
                 class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-lg transition-colors"
               >
                 + Agregar Miembro
+              </button>
+              <button
+                v-if="!group.isAutoSynced || !group.membersUids?.length"
+                @click="forceSyncSpecificGroup(group.id)"
+                :disabled="loading"
+                class="px-3 py-1 bg-orange-500 hover:bg-orange-600 text-white text-xs rounded-lg transition-colors disabled:opacity-50"
+              >
+                🔄 Forzar Sync
               </button>
             </div>
           </div>
@@ -487,18 +533,22 @@ onUnmounted(() => {
             </h5>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
               <div 
-                v-for="member in group.members" 
+                v-for="(member, index) in group.members" 
                 :key="member"
                 class="flex items-center justify-between text-sm bg-white rounded px-3 py-2"
               >
-                <span :class="member === userStore.user?.email ? 'font-medium' : ''">
-                  {{ member === userStore.user?.email ? `${member} (Tú)` : member }}
-                </span>
-                <div class="flex items-center gap-2">
-                  <!-- Indicador de sincronización por miembro -->
-                  <span v-if="group.membersUids?.length" class="text-green-500 text-xs" title="Sincronizado con móvil">
+                <div class="flex items-center">
+                  <span :class="member === userStore.user?.email ? 'font-medium' : ''">
+                    {{ member === userStore.user?.email ? `${member} (Tú)` : member }}
+                  </span>
+                  <!-- Indicador de UID sincronizado -->
+                  <span v-if="group.membersUids && group.membersUids[index]" 
+                        class="ml-2 text-green-500 text-xs" 
+                        :title="`UID: ${group.membersUids[index]}`">
                     📱✅
                   </span>
+                </div>
+                <div class="flex items-center gap-2">
                   <button
                     v-if="group.createdBy === userStore.user?.email && member !== userStore.user?.email"
                     @click="removeMember(group.id, member)"
@@ -541,7 +591,7 @@ onUnmounted(() => {
         <div class="space-y-4">
           <div class="bg-blue-50 p-3 rounded border border-blue-200">
             <p class="text-sm text-blue-800 flex items-center">
-              🔄 El miembro será agregado automáticamente en web y móvil
+              🔄 El miembro será agregado automáticamente en web y móvil usando su UID
             </p>
           </div>
 
@@ -555,7 +605,7 @@ onUnmounted(() => {
               @keyup.enter="inviteUser"
             />
             <p class="text-xs text-gray-500 mt-1">
-              💡 El usuario debe estar registrado en el sistema
+              💡 El usuario debe estar registrado en el sistema para obtener su UID
             </p>
           </div>
           
@@ -565,7 +615,7 @@ onUnmounted(() => {
               :disabled="inviteForm.loading"
               class="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center"
             >
-              {{ inviteForm.loading ? '🔄 Agregando...' : '🚀 Agregar Automáticamente' }}
+              {{ inviteForm.loading ? '🔄 Agregando...' : '🚀 Agregar y Sincronizar' }}
             </button>
             <button
               @click="showInviteModal = false"

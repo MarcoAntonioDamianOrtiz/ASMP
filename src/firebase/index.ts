@@ -832,16 +832,21 @@ export const getMemberCircleStatus = async (userEmail: string): Promise<{ active
 };
 // EXPORTAR FUNCIONES DE SINCRONIZACIÓN
 export {
-  syncWebToMobile,
-  syncMobileToWeb,
-  getUserAllGroups,
-  setupBidirectionalSync,
-  migrateExistingData,
-  resolveConflict,
-  type MobileGroup,
-  type WebGroup,
-  type SyncMapping
-} from './sync.ts';
+  createAutoSyncGroup,
+  addMemberAutoSync,
+  removeMemberAutoSync,
+  subscribeToUserGroupsAutoSync,
+  migrateExistingGroupsToAutoSync,
+  checkAutoSyncHealth,
+  setupMobileToWebSync,
+  forceSyncGroup,
+  type UnifiedGroup
+} from './autoSync';
+
+
+// TAMBIÉN AÑADIR writeBatch si no está importado:
+import { writeBatch } from "firebase/firestore";
+export { writeBatch };
 
 // FUNCIÓN AUXILIAR PARA VERIFICAR COMPATIBILIDAD DE COLECCIONES
 export const checkCollectionCompatibility = async (): Promise<{
@@ -900,7 +905,7 @@ export const createGroupWithSync = async (groupData: Omit<FirebaseGroup, 'id'>):
     // Intentar sincronizar a móvil automáticamente
     let mobileGroupId = '';
     try {
-      const { syncWebToMobile } = await import('./sync');
+      const { syncWebToMobile } = await import('./autoSync.ts');
       mobileGroupId = await syncWebToMobile(webGroupId);
       console.log('✅ Grupo creado y sincronizado automáticamente');
     } catch (syncError) {
