@@ -10,8 +10,6 @@ import {
   type FirebaseGroup 
 } from '@/firebase'
 import { useUserStore } from '@/stores/user'
-import SyncStatusPanel from '@/components/SyncStatusPanel.vue'
-
 
 // Props para recibir datos desde el padre
 const props = defineProps<{
@@ -32,12 +30,12 @@ const deleting = ref(false)
 
 const circleActionLoading = ref<string | null>(null)
 
-// NUEVAS VARIABLES PARA ZONAS DE RIESGO
+// VARIABLES PARA ZONAS DE RIESGO
 const showZonasRiesgo = ref(false)
 const zonasRiesgoLayer = ref<any>(null)
 const loadingZonas = ref(false)
 const zonasData = ref<any>(null)
-const currentPopup = ref<any>(null) // NUEVA VARIABLE PARA CONTROLAR POPUP ÚNICO
+const currentPopup = ref<any>(null)
 
 // Tu token de Mapbox
 const MAPBOX_TOKEN = 'pk.eyJ1IjoiYW50b255MjcwNCIsImEiOiJjbWQweGg4d2IxOGdnMmtwemp3Nnp0YmIxIn0.-Hm3lVWw6U-NE10a0u2U2A'
@@ -52,7 +50,29 @@ const getUserColor = (name: string): string => {
   return colors[Math.abs(hash) % colors.length]
 }
 
-// NUEVA FUNCIÓN PARA CARGAR Y MOSTRAR ZONAS DE RIESGO
+// Computed para mostrar ubicaciones relevantes
+const relevantLocations = computed(() => {
+  const locations: FirebaseUbicacion[] = []
+  
+  // Siempre mostrar mi ubicación si existe
+  if (myLocation.value) {
+    locations.push(myLocation.value)
+  }
+  
+  // Si tengo un grupo seleccionado, mostrar ubicaciones del grupo
+  if (props.selectedGroup) {
+    groupLocations.value.forEach(loc => {
+      // No duplicar mi ubicación
+      if (loc.userId !== userStore.user?.uid) {
+        locations.push(loc)
+      }
+    })
+  }
+  
+  return locations
+})
+
+// FUNCIÓN PARA ZONAS DE RIESGO
 const toggleZonasRiesgo = async () => {
   if (!map.value) {
     console.log('Mapa no disponible')
@@ -60,10 +80,8 @@ const toggleZonasRiesgo = async () => {
   }
 
   if (showZonasRiesgo.value) {
-    // Ocultar zonas de riesgo
     hideZonasRiesgo()
   } else {
-    // Mostrar zonas de riesgo
     await showZonasRiesgoOnMap()
   }
 }
@@ -80,14 +98,9 @@ const showZonasRiesgoOnMap = async () => {
     const geoJsonData = await response.json()
     
     console.log("✅ Datos cargados:", geoJsonData.features?.length, "zonas")
-    console.log("📊 Zonas encontradas:", geoJsonData.features.map((f: any) => ({
-      nombre: f.properties.NOMLOC,
-      codigo: f.properties.CVE_ENT + f.properties.CVE_MUN
-    })))
     
     zonasData.value = geoJsonData
     
-    // Agregar fuente de datos al mapa
     if (!map.value.getSource('zonas-riesgo')) {
       map.value.addSource('zonas-riesgo', {
         type: 'geojson',
@@ -95,7 +108,6 @@ const showZonasRiesgoOnMap = async () => {
       })
     }
 
-    // Agregar capa de polígonos (relleno) - ADAPTADO A TU ESTRUCTURA
     if (!map.value.getLayer('zonas-riesgo-fill')) {
       map.value.addLayer({
         id: 'zonas-riesgo-fill',
@@ -104,27 +116,24 @@ const showZonasRiesgoOnMap = async () => {
         paint: {
           'fill-color': [
             'case',
-            // Usar el campo 'riesgo' de tu estructura (puede ser null)
-            ['==', ['get', 'riesgo'], 'ALTO'], '#ef4444',      // Rojo para riesgo alto
-            ['==', ['get', 'riesgo'], 'MEDIO'], '#f59e0b',     // Amarillo para riesgo medio  
-            ['==', ['get', 'riesgo'], 'BAJO'], '#10b981',      // Verde para riesgo bajo
-            // Si total_delitos existe, usar gradiente basado en número de delitos
+            ['==', ['get', 'riesgo'], 'ALTO'], '#ef4444',
+            ['==', ['get', 'riesgo'], 'MEDIO'], '#f59e0b',
+            ['==', ['get', 'riesgo'], 'BAJO'], '#10b981',
             ['!=', ['get', 'total_delitos'], null], [
               'interpolate',
               ['linear'],
               ['get', 'total_delitos'],
-              0, '#10b981',    // Verde para 0 delitos
-              10, '#f59e0b',   // Amarillo para delitos medios
-              50, '#ef4444'    // Rojo para muchos delitos
+              0, '#10b981',
+              10, '#f59e0b',
+              50, '#ef4444'
             ],
-            '#8b5cf6'  // Morado por defecto para áreas sin clasificar
+            '#8b5cf6'
           ],
           'fill-opacity': 0.4
         }
       })
     }
 
-    // Agregar capa de bordes - ADAPTADO
     if (!map.value.getLayer('zonas-riesgo-line')) {
       map.value.addLayer({
         id: 'zonas-riesgo-line',
@@ -136,8 +145,8 @@ const showZonasRiesgoOnMap = async () => {
             ['==', ['get', 'riesgo'], 'ALTO'], '#dc2626',
             ['==', ['get', 'riesgo'], 'MEDIO'], '#d97706',
             ['==', ['get', 'riesgo'], 'BAJO'], '#059669',
-            ['!=', ['get', 'total_delitos'], null], '#7c3aed', // Morado para zonas con datos de delitos
-            '#4b5563'  // Gris por defecto
+            ['!=', ['get', 'total_delitos'], null], '#7c3aed',
+            '#4b5563'
           ],
           'line-width': 2,
           'line-opacity': 0.9
@@ -145,18 +154,15 @@ const showZonasRiesgoOnMap = async () => {
       })
     }
 
-    // Agregar eventos de click y hover - ADAPTADO A TU ESTRUCTURA
     map.value.on('click', 'zonas-riesgo-fill', (e: any) => {
       const properties = e.features[0].properties
       
-      // CERRAR POPUP ANTERIOR SI EXISTE
       if (currentPopup.value) {
         currentPopup.value.remove()
         currentPopup.value = null
       }
       
-      // Determinar el color basado en tu estructura de datos
-      let colorZona = '#8b5cf6' // Morado por defecto
+      let colorZona = '#8b5cf6'
       let nivelRiesgo = 'Sin clasificar'
       
       if (properties.riesgo) {
@@ -188,7 +194,6 @@ const showZonasRiesgoOnMap = async () => {
         }
       }
       
-      // CREAR NUEVO POPUP Y GUARDARLO EN LA REFERENCIA
       currentPopup.value = new (window as any).mapboxgl.Popup({
         offset: [0, -10],
         closeButton: true,
@@ -255,14 +260,11 @@ const showZonasRiesgoOnMap = async () => {
         `)
         .addTo(map.value)
 
-      // LIMPIAR REFERENCIA CUANDO SE CIERRE EL POPUP
       currentPopup.value.on('close', () => {
         currentPopup.value = null
       })
     })
 
-
-    // Cambiar cursor al hover
     map.value.on('mouseenter', 'zonas-riesgo-fill', () => {
       map.value.getCanvas().style.cursor = 'pointer'
     })
@@ -272,7 +274,6 @@ const showZonasRiesgoOnMap = async () => {
     })
 
     showZonasRiesgo.value = true
-    
     console.log("✅ Zonas de riesgo mostradas en el mapa")
     
   } catch (error) {
@@ -287,13 +288,11 @@ const hideZonasRiesgo = () => {
   if (!map.value) return
 
   try {
-    // CERRAR POPUP SI ESTÁ ABIERTO
     if (currentPopup.value) {
       currentPopup.value.remove()
       currentPopup.value = null
     }
     
-    // Remover capas si existen
     if (map.value.getLayer('zonas-riesgo-fill')) {
       map.value.removeLayer('zonas-riesgo-fill')
     }
@@ -301,7 +300,6 @@ const hideZonasRiesgo = () => {
       map.value.removeLayer('zonas-riesgo-line')
     }
     
-    // Remover fuente si existe
     if (map.value.getSource('zonas-riesgo')) {
       map.value.removeSource('zonas-riesgo')
     }
@@ -314,29 +312,7 @@ const hideZonasRiesgo = () => {
   }
 }
 
-// Computed para mostrar ubicaciones relevantes
-const relevantLocations = computed(() => {
-  const locations: FirebaseUbicacion[] = []
-  
-  // Siempre mostrar mi ubicación si existe
-  if (myLocation.value) {
-    locations.push(myLocation.value)
-  }
-  
-  // Si tengo un grupo seleccionado, mostrar ubicaciones del grupo
-  if (props.selectedGroup) {
-    groupLocations.value.forEach(loc => {
-      // No duplicar mi ubicación
-      if (loc.userId !== userStore.user?.uid) {
-        locations.push(loc)
-      }
-    })
-  }
-  
-  return locations
-})
-
-// FUNCIÓN MEJORADA para actualizar marcadores
+// FUNCIÓN para actualizar marcadores
 const updateMarkers = () => {
   if (!map.value) {
     console.log('Mapa no disponible para actualizar marcadores')
@@ -356,7 +332,6 @@ const updateMarkers = () => {
   })
   markers.value.clear()
 
-  // Verificar que tenemos ubicaciones
   if (relevantLocations.value.length === 0) {
     console.log('❌ No hay ubicaciones para mostrar')
     return
@@ -369,7 +344,6 @@ const updateMarkers = () => {
       return
     }
 
-    // Solo mostrar ubicaciones online o la mía propia
     const isMyLocation = location.userId === userStore.user?.uid
     if (!isMyLocation && !location.isOnline) {
       console.log('⚫ Saltando ubicación offline:', location.userName)
@@ -575,25 +549,7 @@ const createMap = () => {
   })
 }
 
-// [Resto del código se mantiene igual...]
-let unsubscribeMyLocation: (() => void) | null = null
-let unsubscribeGroupLocations: (() => void) | null = null
-
-onMounted(async () => {
-  if (!userStore.isAuthenticated || !userStore.user) return
-  
-  initMap()
-
-  console.log('🚀 Iniciando suscripciones para usuario:', userStore.user.uid)
-
-  // Suscribirse a mi ubicación
-  unsubscribeMyLocation = subscribeToMyLocation(userStore.user.uid, (location) => {
-    console.log('📍 Mi ubicación actualizada:', location)
-    myLocation.value = location
-  })
-})
-
-// [El resto de las funciones se mantienen iguales...]
+// Funciones para gestión de miembros
 const getMemberLocationStatus = (memberEmail: string) => {
   const memberLocation = groupLocations.value.find(loc => loc.userEmail === memberEmail)
   
@@ -678,6 +634,23 @@ const refreshGroupLocations = () => {
     }, 1000)
   }
 }
+
+let unsubscribeMyLocation: (() => void) | null = null
+let unsubscribeGroupLocations: (() => void) | null = null
+
+onMounted(async () => {
+  if (!userStore.isAuthenticated || !userStore.user) return
+  
+  initMap()
+
+  console.log('🚀 Iniciando suscripciones para usuario:', userStore.user.uid)
+
+  // Suscribirse a mi ubicación
+  unsubscribeMyLocation = subscribeToMyLocation(userStore.user.uid, (location) => {
+    console.log('📍 Mi ubicación actualizada:', location)
+    myLocation.value = location
+  })
+})
 
 onUnmounted(() => {
   console.log('🧹 Limpiando componente MapPanel')
@@ -920,7 +893,7 @@ watch(() => relevantLocations.value, (newLocations, oldLocations) => {
         </button>
       </div>
 
-      <!-- LEYENDA FLOTANTE MEJORADA -->
+      <!-- LEYENDA FLOTANTE -->
       <div v-if="showZonasRiesgo" class="absolute top-20 left-4 bg-white/95 backdrop-blur-sm rounded-lg shadow-xl border p-3 z-20 max-w-[180px]">
         <h4 class="font-semibold text-gray-800 mb-2 text-xs flex items-center">
           🏷️ Zonas de Riesgo
@@ -960,7 +933,7 @@ watch(() => relevantLocations.value, (newLocations, oldLocations) => {
         </p>
       </div>
 
-      <!-- Panel de información MEJORADO -->
+      <!-- Panel de información -->
       <div class="absolute top-4 right-4 bg-white rounded-lg shadow-lg p-4 max-w-xs">
         <h4 class="font-semibold text-gray-800 mb-3 flex items-center">
           <svg class="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -983,7 +956,6 @@ watch(() => relevantLocations.value, (newLocations, oldLocations) => {
             </div>
             <span class="text-xs text-gray-500">{{ groupLocations.filter(l => l.isOnline).length }}</span>
           </div>
-          <!-- NUEVO INDICADOR DE ZONAS DE RIESGO -->
           <div class="flex items-center justify-between">
             <div class="flex items-center">
               <div class="w-3 h-3 bg-purple-500 rounded border-2 border-white shadow mr-2"></div>
@@ -1004,7 +976,6 @@ watch(() => relevantLocations.value, (newLocations, oldLocations) => {
               <span>Miembros online:</span>
               <span class="font-medium text-green-600">{{ groupLocations.filter(l => l.isOnline).length }}</span>
             </div>
-            <!-- NUEVA INFO DE ZONAS -->
             <div v-if="showZonasRiesgo && zonasData" class="text-xs text-gray-500 flex justify-between">
               <span>Zonas cargadas:</span>
               <span class="font-medium text-purple-600">{{ zonasData.features?.length || 0 }}</span>
@@ -1013,11 +984,6 @@ watch(() => relevantLocations.value, (newLocations, oldLocations) => {
         </div>
       </div>
     </div>
-
-      <!-- NUEVO: Panel de Sincronización -->
-      <div class="absolute bottom-4 right-4 z-10">
-        <SyncStatusPanel />
-      </div>
       
     <!-- Modal de confirmación para eliminar grupo -->
     <div v-if="showDeleteModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">

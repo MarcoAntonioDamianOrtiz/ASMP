@@ -10,6 +10,12 @@ import {
 import router from "@/router";
 import type { User } from "firebase/auth";
 
+// ✨ IMPORTAR SISTEMA AUTO-SYNC SIMPLE
+import {
+    migrateExistingGroupsToAutoSync,
+    checkAutoSyncHealth
+} from "@/firebase/autoSync";
+
 export interface UserProfile {
     uid: string;
     email: string;
@@ -26,6 +32,8 @@ export const useUserStore = defineStore("user", {
         userProfile: null as UserProfile | null,
         currentRole: 'guardian' as 'guardian' | 'protegido',
         loading: false,
+        // ✨ SIMPLE: Solo flag de inicialización
+        syncInitialized: false,
     }),
 
     getters: {
@@ -50,14 +58,56 @@ export const useUserStore = defineStore("user", {
                                 nombre: firebaseUser.name,
                                 telefono: firebaseUser.phone,
                             };
+
+                            // ✨ INICIALIZAR SIMPLE AUTO-SYNC
+                            await this.initializeSimpleAutoSync(user.email);
                         }
                     } catch (error) {
                         console.error("Error cargando perfil:", error);
                     }
                 } else {
                     this.userProfile = null;
+                    this.syncInitialized = false;
                 }
             });
+        },
+
+        // ✨ NUEVA FUNCIÓN SIMPLE: Solo agregar UIDs a grupos existentes
+        async initializeSimpleAutoSync(userEmail: string) {
+            if (this.syncInitialized) return;
+
+            try {
+                console.log('🚀 Inicializando auto-sync SIMPLE para:', userEmail);
+
+                // 1. Verificar si hay grupos sin UIDs
+                const health = await checkAutoSyncHealth(userEmail);
+                console.log('📊 Salud SIMPLE:', health);
+
+                // 2. Si hay grupos sin UIDs, agregarlos automáticamente
+                if (health.healthPercentage < 100 && health.totalGroups > 0) {
+                    console.log('🔄 Agregando UIDs automáticamente...');
+                    
+                    // Esperar un poco y ejecutar migración simple
+                    setTimeout(async () => {
+                        try {
+                            const result = await migrateExistingGroupsToAutoSync();
+                            console.log('✅ UIDs agregados automáticamente:', result);
+                            
+                            if (result.updated > 0) {
+                                console.log(`🎉 ${result.updated} grupos ahora tienen UIDs para móvil`);
+                            }
+                        } catch (error) {
+                            console.error('❌ Error agregando UIDs:', error);
+                        }
+                    }, 2000);
+                }
+
+                this.syncInitialized = true;
+                console.log('✅ Auto-sync SIMPLE inicializado');
+
+            } catch (error) {
+                console.error('❌ Error inicializando auto-sync simple:', error);
+            }
         },
 
         setCurrentRole(role: 'guardian' | 'protegido') {
@@ -93,6 +143,9 @@ export const useUserStore = defineStore("user", {
                     telefono: userData.telefono,
                 };
 
+                // ✨ INICIALIZAR AUTO-SYNC SIMPLE
+                await this.initializeSimpleAutoSync(email);
+
                 if (this.currentRole === 'guardian') {
                     router.push({ name: "Estadisticas" });
                 } else {
@@ -120,6 +173,9 @@ export const useUserStore = defineStore("user", {
                         nombre: firebaseUser.name,
                         telefono: firebaseUser.phone,
                     };
+                    
+                    // ✨ INICIALIZAR AUTO-SYNC SIMPLE
+                    await this.initializeSimpleAutoSync(email);
                     
                     if (firebaseUser.role === 'guardian') {
                         router.push({ name: "Estadisticas" });
@@ -168,6 +224,9 @@ export const useUserStore = defineStore("user", {
                         telefono: firebaseUser.phone,
                     };
                     
+                    // ✨ INICIALIZAR AUTO-SYNC SIMPLE
+                    await this.initializeSimpleAutoSync(result.user.email!);
+                    
                     if (firebaseUser.role === 'guardian') {
                         router.push({ name: "Estadisticas" });
                     } else {
@@ -187,6 +246,7 @@ export const useUserStore = defineStore("user", {
                 await signOut(auth);
                 this.user = null;
                 this.userProfile = null;
+                this.syncInitialized = false;
                 router.push({ name: "Index" });
             } catch (error) {
                 console.error("Error al cerrar sesión:", error);
