@@ -106,9 +106,40 @@ export const addMemberAutoSync = async (groupId: string, memberEmail: string): P
   try {
     console.log('👥 Agregando miembro compatible:', memberEmail);
     
-    const userInfo = await getUserUid(memberEmail);
+    // PRIMERO: Verificar que el email sea válido
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(memberEmail)) {
+      throw new Error('Formato de email inválido');
+    }
+
+    // SEGUNDO: Obtener información del usuario o crearlo si no existe
+    let userInfo = await getUserUid(memberEmail);
+    
+    // Si el usuario no existe en la colección 'users', intentar crearlo
     if (!userInfo) {
-      throw new Error('El usuario no está registrado en el sistema');
+      console.log('⚠️ Usuario no encontrado, creando usuario básico:', memberEmail);
+      
+      // Crear usuario básico en la colección 'users'
+      const userRef = doc(collection(db, 'users'));
+      const newUserId = userRef.id;
+      
+      await setDoc(userRef, {
+        email: memberEmail,
+        name: memberEmail.split('@')[0], // Usar parte antes del @ como nombre
+        phone: '',
+        role: 'protegido',
+        status: 'offline',
+        createdAt: new Date(),
+        lastSeen: new Date()
+      });
+      
+      userInfo = {
+        uid: newUserId,
+        email: memberEmail,
+        name: memberEmail.split('@')[0]
+      };
+      
+      console.log('✅ Usuario básico creado:', newUserId);
     }
     
     const groupRef = doc(db, 'circulos', groupId);
@@ -119,20 +150,25 @@ export const addMemberAutoSync = async (groupId: string, memberEmail: string): P
     }
     
     const groupData = groupDoc.data();
-    
+
+    if (groupData.members && groupData.members.includes(memberEmail)) {
+      throw new Error('El usuario ya es miembro del grupo');
+    }
+
     // Actualizar arrays web
     const updatedMembers = [...(groupData.members || []), memberEmail];
     const updatedUids = [...(groupData.membersUids || []), userInfo.uid];
     
+    
     // Actualizar array móvil
-    const newMobileMemeber = {
+    const newMobileMember = {
       email: memberEmail,
       name: userInfo.name,
       phone: '0000000000',
       uid: userInfo.uid,
       rol: 'familiar'
     };
-    const updatedMiembros = [...(groupData.miembros || []), newMobileMemeber];
+    const updatedMiembros = [...(groupData.miembros || []), newMobileMember];
     
     await updateDoc(groupRef, {
       // WEB
@@ -140,6 +176,8 @@ export const addMemberAutoSync = async (groupId: string, memberEmail: string): P
       membersUids: updatedUids,
       // MÓVIL
       miembros: updatedMiembros,
+      // LIMPIAR INVITACIONES PENDIENTES
+      pendingInvitations: arrayRemove(memberEmail),
       lastSyncUpdate: new Date()
     });
     
