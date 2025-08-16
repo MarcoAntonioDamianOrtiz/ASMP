@@ -15,6 +15,7 @@ import {
   arrayRemove,
   setDoc,
   getDoc,
+  writeBatch
 } from "firebase/firestore";
 
 // Tu configuración de Firebase
@@ -36,6 +37,9 @@ export const db = getFirestore(app);
 // Google Auth Provider
 const googleProvider = new GoogleAuthProvider();
 export { googleProvider };
+
+// Exportar writeBatch
+export { writeBatch };
 
 // Interfaces
 export interface FirebaseUser {
@@ -121,8 +125,6 @@ export const getUserByEmail = async (email: string): Promise<FirebaseUser | null
     return null;
   }
 };
-
-
 
 export const createUser = async (userData: Omit<FirebaseUser, 'id'>): Promise<string> => {
   try {
@@ -388,24 +390,37 @@ export const updateUserLocation = async (userId: string, locationData: {
   accuracy?: number;
 }): Promise<void> => {
   try {
-    // USAR SIEMPRE userId como documento ID para evitar duplicados
+    // Validar coordenadas
+    if (!locationData.lat || !locationData.lng || 
+        Math.abs(locationData.lat) > 90 || Math.abs(locationData.lng) > 180) {
+      console.warn('⚠️ Coordenadas inválidas:', locationData.lat, locationData.lng);
+      return;
+    }
+
     const locationRef = doc(db, 'ubicaciones', userId);
     
-    await setDoc(locationRef, {
+    const locationDoc = {
       userId,
-      ...locationData,
+      userEmail: locationData.userEmail,
+      userName: locationData.userName,
+      lat: Number(locationData.lat),
+      lng: Number(locationData.lng),
+      accuracy: locationData.accuracy || 0,
       timestamp: new Date(),
-      isOnline: true
-    }, { merge: true });
+      isOnline: true,
+      lastUpdate: new Date()
+    };
     
-    console.log('✅ Ubicación actualizada para userId:', userId);
+    await setDoc(locationRef, locationDoc, { merge: true });
+    
+    console.log('✅ Ubicación actualizada para userId:', userId, 
+                'Coords:', locationData.lat, locationData.lng);
   } catch (error) {
     console.error('❌ Error updating user location:', error);
     throw error;
   }
 };
 
-// FUNCIÓN CORREGIDA para limpiar ubicación
 export const cleanupUserLocation = async (userId: string): Promise<void> => {
   try {
     const locationRef = doc(db, 'ubicaciones', userId);
@@ -420,19 +435,16 @@ export const cleanupUserLocation = async (userId: string): Promise<void> => {
   }
 };
 
-// FUNCIÓN MEJORADA para marcar usuario offline
 export const setUserOffline = async (userId: string): Promise<void> => {
   try {
     const locationRef = doc(db, 'ubicaciones', userId);
     const locationDoc = await getDoc(locationRef);
     
     if (locationDoc.exists()) {
-      // En lugar de solo marcar offline, eliminar completamente el documento
       await deleteDoc(locationRef);
       console.log('✅ Ubicación eliminada para usuario offline:', userId);
     }
 
-    // También actualizar el estado del usuario
     const userRef = doc(db, 'users', userId);
     const userDoc = await getDoc(userRef);
     
@@ -515,25 +527,22 @@ export const getMyLocation = async (userId: string): Promise<FirebaseUbicacion |
   }
 };
 
-  export const subscribeToGroupLocations = (groupId: string, callback: (locations: FirebaseUbicacion[]) => void) => {
+// FUNCIÓN CORREGIDA Y OPTIMIZADA subscribeToGroupLocations
+export const subscribeToGroupLocations = (groupId: string, callback: (locations: FirebaseUbicacion[]) => void) => {
   console.log('🔄 Suscribiéndose a ubicaciones del grupo:', groupId);
-    
 
   let isSubscriptionActive = true;
   let debounceTimer: NodeJS.Timeout | null = null;
 
   const fetchLocationsDebounced = () => {
-    // Cancelar timer anterior si existe
     if (debounceTimer) {
       clearTimeout(debounceTimer);
     }
 
-    // Ejecutar después de 300ms para evitar múltiples llamadas
     debounceTimer = setTimeout(async () => {
       if (!isSubscriptionActive) return;
       
       try {
-        // 1. Obtener miembros del grupo
         const groupDoc = await getDoc(doc(db, 'circulos', groupId));
         if (!groupDoc.exists()) {
           console.log('❌ Grupo no existe');
@@ -618,13 +627,11 @@ export const getMyLocation = async (userId: string): Promise<FirebaseUbicacion |
           callback([]);
         }
       }
-    }, 300); // Debounce de 300ms
+    }, 300);
   };
 
-  // Ejecutar fetch inicial
   fetchLocationsDebounced();
 
-  // Configurar listener optimizado solo para ubicaciones
   const unsubscribeLocations = onSnapshot(
     collection(db, 'ubicaciones'), 
     (snapshot) => {
@@ -640,7 +647,6 @@ export const getMyLocation = async (userId: string): Promise<FirebaseUbicacion |
     }
   );
 
-  // Listener separado para cambios en el grupo (menos frecuente)
   const unsubscribeGroup = onSnapshot(
     doc(db, 'circulos', groupId), 
     () => {
@@ -653,7 +659,6 @@ export const getMyLocation = async (userId: string): Promise<FirebaseUbicacion |
     }
   );
 
-  // Retornar función de cleanup mejorada
   return () => {
     console.log('🧹 Limpiando suscripciones de grupo:', groupId);
     isSubscriptionActive = false;
@@ -667,91 +672,6 @@ export const getMyLocation = async (userId: string): Promise<FirebaseUbicacion |
   };
 };
 
-      // 2. Obtener TODOS los usuarios para mapear email -> userId
-      const usersSnapshot = await getDocs(collection(db, 'users'));
-      const emailToUserMap = new Map<string, { userId: string, userData: any }>();
-      
-      usersSnapshot.docs.forEach(userDoc => {
-        const userData = userDoc.data();
-        if (userData.email && memberEmails.includes(userData.email)) {
-          emailToUserMap.set(userData.email, {
-            userId: userDoc.id,
-            userData: userData
-          });
-        }
-      });
-      
-      console.log('📊 Usuarios mapeados:', emailToUserMap.size);
-
-      // 3. Obtener ubicaciones de los miembros del grupo
-      const locations: FirebaseUbicacion[] = [];
-      
-      for (const [email, { userId, userData }] of emailToUserMap.entries()) {
-        try {
-          const locationDoc = await getDoc(doc(db, 'ubicaciones', userId));
-          
-          if (locationDoc.exists()) {
-            const locationData = locationDoc.data();
-            console.log('🔍 Procesando ubicación de:', userData.name, locationData);
-
-            if (locationData.lat && locationData.lng) {
-              const location: FirebaseUbicacion = {
-                id: locationDoc.id,
-                userId: userId,
-                userEmail: email,
-                userName: userData.name || email.split('@')[0],
-                lat: Number(locationData.lat),
-                lng: Number(locationData.lng),
-                accuracy: locationData.accuracy,
-                timestamp: locationData.timestamp,
-                isOnline: locationData.isOnline || false
-              };
-              
-              locations.push(location);
-              console.log('📍 Ubicación válida agregada:', userData.name, 'Online:', location.isOnline);
-            } else {
-              console.log('⚠️ Ubicación sin coordenadas válidas:', email);
-            }
-          } else {
-            console.log('❌ No hay documento de ubicación para:', email);
-          }
-        } catch (err) {
-          console.error('❌ Error obteniendo ubicación para', email, ':', err);
-        }
-      }
-      
-      console.log('🎯 Total ubicaciones encontradas:', locations.length);
-      callback(locations);
-      
-    } catch (error) {
-      console.error('❌ Error general obteniendo ubicaciones:', error);
-      callback([]);
-    }
-  };
-
-  // Ejecutar fetch inicial
-  fetchLocations();
-
-  // Configurar listeners para actualizaciones en tiempo real
-  const unsubscribeGroup = onSnapshot(doc(db, 'circulos', groupId), () => {
-    console.log('🔄 Grupo actualizado, refrescando ubicaciones...');
-    fetchLocations();
-  });
-
-  const unsubscribeLocations = onSnapshot(collection(db, 'ubicaciones'), (snapshot) => {
-    console.log('🔄 Cambios en ubicaciones detectados, docs:', snapshot.docs.length);
-    fetchLocations();
-  });
-
-  // Retornar función de cleanup
-  return () => {
-    console.log('🧹 Limpiando suscripciones de grupo:', groupId);
-    unsubscribeGroup();
-    unsubscribeLocations();
-  };
-};
-
-// Suscribirse a mi ubicación en tiempo real
 export const subscribeToMyLocation = (userId: string, callback: (location: FirebaseUbicacion | null) => void) => {
   console.log('📍 Suscribiéndose a mi ubicación:', userId);
   
@@ -870,7 +790,7 @@ export const deleteUserGroup = async (groupId: string, userEmail: string): Promi
   }
 };
 
-// FUNCIONES CORREGIDAS PARA ACTIVAR/DESACTIVAR CÍRCULOS
+// FUNCIONES PARA ACTIVAR/DESACTIVAR CÍRCULOS
 export const activateMemberCircle = async (userEmail: string): Promise<void> => {
   try {
     console.log('🎯 Activando círculo para:', userEmail);
@@ -886,15 +806,13 @@ export const activateMemberCircle = async (userEmail: string): Promise<void> => 
     const userData = userDoc.data();
     const userId = userDoc.id;
     
-    // USAR SIEMPRE userId como documento ID
     const locationRef = doc(db, 'ubicaciones', userId);
     
-    // Crear o actualizar el documento de ubicación
     await setDoc(locationRef, {
       userId: userId,
       userEmail: userEmail,
       userName: userData.name || 'Usuario',
-      lat: 19.4290767, // Coordenadas por defecto (UTT)
+      lat: 19.4290767,
       lng: -98.1556253,
       accuracy: 50,
       timestamp: new Date(),
@@ -921,8 +839,6 @@ export const deactivateMemberCircle = async (userEmail: string): Promise<void> =
     }
     
     const userId = userSnapshot.docs[0].id;
-    
-    // En lugar de solo marcar como offline, eliminar el documento
     await setUserOffline(userId);
     
     console.log('✅ Círculo desactivado para:', userEmail);
@@ -960,25 +876,8 @@ export const getMemberCircleStatus = async (userEmail: string): Promise<{ active
     return { active: false, lastUpdate: null };
   }
 };
-// EXPORTAR FUNCIONES DE SINCRONIZACIÓN
-export {
-  createAutoSyncGroup,
-  addMemberAutoSync,
-  removeMemberAutoSync,
-  subscribeToUserGroupsAutoSync,
-  migrateExistingGroupsToAutoSync,
-  checkAutoSyncHealth,
-  setupMobileToWebSync,
-  forceSyncGroup,
-  type UnifiedGroup
-} from './autoSync';
 
-
-// TAMBIÉN AÑADIR writeBatch si no está importado:
-import { writeBatch } from "firebase/firestore";
-export { writeBatch };
-
-// FUNCIÓN AUXILIAR PARA VERIFICAR COMPATIBILIDAD DE COLECCIONES
+// FUNCIONES AUXILIARES DE DIAGNÓSTICO
 export const checkCollectionCompatibility = async (): Promise<{
   webGroups: number;
   mobileGroups: number;
@@ -996,7 +895,6 @@ export const checkCollectionCompatibility = async (): Promise<{
     const mobileGroups = mobileSnapshot.size;
     const syncMappings = syncSnapshot.size;
     
-    // Determinar si necesita migración
     const needsMigration = webGroups > 0 && syncMappings === 0;
 
     console.log('📊 Estado de colecciones:', {
@@ -1023,16 +921,13 @@ export const checkCollectionCompatibility = async (): Promise<{
   }
 };
 
-// FUNCIÓN PARA CREAR GRUPO CON SINCRONIZACIÓN AUTOMÁTICA
 export const createGroupWithSync = async (groupData: Omit<FirebaseGroup, 'id'>): Promise<{
   webGroupId: string;
   mobileGroupId: string;
 }> => {
   try {
-    // Crear grupo en web
     const webGroupId = await createGroup(groupData);
     
-    // Intentar sincronizar a móvil automáticamente
     let mobileGroupId = '';
     try {
       const { syncWebToMobile } = await import('./autoSync.ts');
@@ -1049,41 +944,6 @@ export const createGroupWithSync = async (groupData: Omit<FirebaseGroup, 'id'>):
   }
 };
 
-// FUNCIÓN MEJORADA PARA INVITAR CON SINCRONIZACIÓN
-export const inviteToGroupWithSync = async (
-  groupId: string, 
-  inviteeEmail: string, 
-  inviterData: { email: string, name: string },
-  groupType: 'web' | 'mobile' | 'synced' = 'web'
-): Promise<string> => {
-  try {
-    let targetGroupId = groupId;
-    
-    // Si es grupo móvil, buscar el ID del grupo web sincronizado
-    if (groupType === 'mobile' || groupType === 'synced') {
-      const syncSnapshot = await getDocs(collection(db, 'sync_mappings'));
-      const mapping = syncSnapshot.docs.find(doc => {
-        const data = doc.data();
-        return data.mobileGroupId === groupId;
-      });
-      
-      if (mapping) {
-        targetGroupId = mapping.data().webGroupId;
-      }
-    }
-
-    // Usar la función original de invitación
-    const invitationId = await inviteToGroup(targetGroupId, inviteeEmail, inviterData);
-    
-    console.log('✅ Invitación enviada con sincronización automática');
-    return invitationId;
-  } catch (error) {
-    console.error('❌ Error enviando invitación sincronizada:', error);
-    throw error;
-  }
-};
-
-// FUNCIÓN PARA OBTENER ESTADO DETALLADO DE UN USUARIO
 export const getUserSyncStatus = async (userEmail: string): Promise<{
   webGroups: FirebaseGroup[];
   mobileGroups: any[];
@@ -1097,7 +957,6 @@ export const getUserSyncStatus = async (userEmail: string): Promise<{
       getUserInvitations(userEmail)
     ]);
 
-    // Obtener grupos móviles (simulado - ajustar según tu estructura)
     const mobileSnapshot = await getDocs(collection(db, 'mobile_groups'));
     const mobileGroups = mobileSnapshot.docs
       .map(doc => ({ id: doc.id, ...doc.data() }))
@@ -1105,7 +964,6 @@ export const getUserSyncStatus = async (userEmail: string): Promise<{
         group.members && group.members.some((m: any) => m.email === userEmail)
       );
 
-    // Contar grupos sincronizados
     const syncSnapshot = await getDocs(collection(db, 'sync_mappings'));
     const syncedGroups = syncSnapshot.docs.filter(doc => {
       const data = doc.data();
@@ -1137,7 +995,6 @@ export const getUserSyncStatus = async (userEmail: string): Promise<{
   }
 };
 
-// FUNCIÓN PARA LIMPIAR DATOS DE SINCRONIZACIÓN HUÉRFANOS
 export const cleanupOrphanedSyncData = async (): Promise<{
   deletedMappings: number;
   deletedMobileGroups: number;
@@ -1158,7 +1015,6 @@ export const cleanupOrphanedSyncData = async (): Promise<{
     let deletedMobileGroups = 0;
     const batch = writeBatch(db);
 
-    // Limpiar mapeos huérfanos
     for (const mappingDoc of syncSnapshot.docs) {
       const data = mappingDoc.data();
       const webExists = webGroupIds.has(data.webGroupId);
@@ -1171,7 +1027,6 @@ export const cleanupOrphanedSyncData = async (): Promise<{
       }
     }
 
-    // Limpiar grupos móviles sin mapeo
     const validMobileIds = new Set(
       syncSnapshot.docs.map(doc => doc.data().mobileGroupId)
     );
@@ -1194,3 +1049,156 @@ export const cleanupOrphanedSyncData = async (): Promise<{
   }
 };
 
+export const validateGroupIntegrity = async (groupId: string): Promise<{
+  isValid: boolean;
+  issues: string[];
+  fixable: boolean;
+}> => {
+  try {
+    const groupDoc = await getDoc(doc(db, 'circulos', groupId));
+    if (!groupDoc.exists()) {
+      return { isValid: false, issues: ['Grupo no existe'], fixable: false };
+    }
+
+    const groupData = groupDoc.data();
+    const issues: string[] = [];
+    let fixable = true;
+
+    if (!groupData.members || !Array.isArray(groupData.members)) {
+      issues.push('Array de miembros faltante o inválido');
+    }
+
+    if (!groupData.name || groupData.name.trim() === '') {
+      issues.push('Nombre del grupo faltante');
+    }
+
+    if (groupData.members && !groupData.miembros) {
+      issues.push('Formato móvil faltante - requiere migración');
+    }
+
+    if (groupData.members && groupData.membersUids) {
+      if (groupData.members.length !== groupData.membersUids.length) {
+        issues.push('Desincronización entre emails y UIDs');
+      }
+    }
+
+    return {
+      isValid: issues.length === 0,
+      issues,
+      fixable
+    };
+  } catch (error) {
+    console.error('❌ Error validando grupo:', error);
+    return { isValid: false, issues: ['Error de validación'], fixable: false };
+  }
+};
+
+export const autoFixGroup = async (groupId: string): Promise<{
+  success: boolean;
+  fixesApplied: string[];
+  remainingIssues: string[];
+}> => {
+  try {
+    console.log('🔧 Iniciando auto-reparación del grupo:', groupId);
+    
+    const groupRef = doc(db, 'circulos', groupId);
+    const groupDoc = await getDoc(groupRef);
+    
+    if (!groupDoc.exists()) {
+      throw new Error('Grupo no encontrado');
+    }
+
+    const groupData = groupDoc.data();
+    const fixesApplied: string[] = [];
+    const remainingIssues: string[] = [];
+    const updates: any = {};
+
+    if (!groupData.members || !Array.isArray(groupData.members)) {
+      updates.members = [];
+      fixesApplied.push('Creado array de miembros');
+    }
+
+    if (!groupData.pendingInvitations || !Array.isArray(groupData.pendingInvitations)) {
+      updates.pendingInvitations = [];
+      fixesApplied.push('Creado array de invitaciones pendientes');
+    }
+
+    updates.isAutoSynced = true;
+    updates.lastSyncUpdate = new Date();
+
+    if (Object.keys(updates).length > 0) {
+      await updateDoc(groupRef, updates);
+      fixesApplied.push('Metadatos de sincronización actualizados');
+    }
+
+    console.log('✅ Auto-reparación completada:', fixesApplied.length, 'correcciones');
+    
+    return {
+      success: true,
+      fixesApplied,
+      remainingIssues
+    };
+  } catch (error) {
+    console.error('❌ Error en auto-reparación:', error);
+    return {
+      success: false,
+      fixesApplied: [],
+      remainingIssues: [error.message]
+    };
+  }
+};
+
+export const cleanupInactiveLocations = async (maxAgeMinutes: number = 30): Promise<{
+  cleaned: number;
+  errors: number;
+}> => {
+  try {
+    console.log('🧹 Limpiando ubicaciones inactivas...');
+    
+    const locationsSnapshot = await getDocs(collection(db, 'ubicaciones'));
+    const cutoffTime = new Date(Date.now() - maxAgeMinutes * 60 * 1000);
+    
+    let cleaned = 0;
+    let errors = 0;
+    const batch = writeBatch(db);
+
+    for (const locationDoc of locationsSnapshot.docs) {
+      try {
+        const data = locationDoc.data();
+        const timestamp = data.timestamp?.toDate();
+        
+        if (!timestamp || timestamp < cutoffTime) {
+          batch.delete(locationDoc.ref);
+          cleaned++;
+          console.log('🗑️ Marcando ubicación inactiva para limpieza:', data.userEmail);
+        }
+      } catch (error) {
+        console.error('❌ Error procesando ubicación:', locationDoc.id, error);
+        errors++;
+      }
+    }
+
+    if (cleaned > 0) {
+      await batch.commit();
+      console.log('✅ Ubicaciones inactivas limpiadas:', cleaned);
+    }
+
+    return { cleaned, errors };
+  } catch (error) {
+    console.error('❌ Error en limpieza de ubicaciones:', error);
+    return { cleaned: 0, errors: 1 };
+  }
+};
+
+// EXPORTAR FUNCIONES DE SINCRONIZACIÓN DESDE autoSync
+export {
+  createAutoSyncGroup,
+  addMemberAutoSync,
+  removeMemberAutoSync,
+  subscribeToUserGroupsAutoSync,
+  migrateExistingGroupsToAutoSync,
+  checkAutoSyncHealth,
+  setupMobileToWebSync,
+  forceSyncGroup,
+  type UnifiedGroup
+} from './autoSync';

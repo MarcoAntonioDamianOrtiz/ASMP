@@ -1,4 +1,4 @@
-// src/firebase/autoSync.ts - ARREGLADO para estructura móvil existente
+// src/firebase/autoSync.ts - VERSIÓN COMPLETA CORREGIDA
 import { 
   doc, 
   getDoc, 
@@ -100,7 +100,7 @@ export const createAutoSyncGroup = async (groupData: {
 };
 
 /**
- * FUNCIÓN: Agregar miembro compatible
+ * FUNCIÓN CORREGIDA: Agregar miembro compatible
  */
 export const addMemberAutoSync = async (groupId: string, memberEmail: string): Promise<void> => {
   try {
@@ -151,6 +151,7 @@ export const addMemberAutoSync = async (groupId: string, memberEmail: string): P
     
     const groupData = groupDoc.data();
 
+    // Verificar si el usuario ya es miembro
     if (groupData.members && groupData.members.includes(memberEmail)) {
       throw new Error('El usuario ya es miembro del grupo');
     }
@@ -158,7 +159,6 @@ export const addMemberAutoSync = async (groupId: string, memberEmail: string): P
     // Actualizar arrays web
     const updatedMembers = [...(groupData.members || []), memberEmail];
     const updatedUids = [...(groupData.membersUids || []), userInfo.uid];
-    
     
     // Actualizar array móvil
     const newMobileMember = {
@@ -484,7 +484,7 @@ export const setupMobileToWebSync = (userEmail: string): () => void => {
   return () => {};
 };
 
-// ======================== FUNCIONES AUXILIARES ========================
+// ======================== FUNCIONES AUXILIARES MEJORADAS ========================
 
 const getUserUid = async (email: string): Promise<{
   uid: string;
@@ -492,6 +492,7 @@ const getUserUid = async (email: string): Promise<{
   name: string;
 } | null> => {
   try {
+    // Buscar en la colección 'users'
     const userQuery = query(collection(db, 'users'), where('email', '==', email));
     const userSnapshot = await getDocs(userQuery);
     
@@ -502,10 +503,11 @@ const getUserUid = async (email: string): Promise<{
       return {
         uid: userDoc.id,
         email: email,
-        name: userData.name || email.split('@')[0]
+        name: userData.name || userData.displayName || email.split('@')[0]
       };
     }
     
+    console.log('⚠️ Usuario no encontrado en colección users:', email);
     return null;
   } catch (error) {
     console.error('❌ Error obteniendo UID:', email, error);
