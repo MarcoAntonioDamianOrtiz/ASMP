@@ -4,13 +4,13 @@ import { useUserStore } from '@/stores/user'
 import { 
   respondToInvitation,
   subscribeToUserInvitations,
+  sendGroupInvitation,  // CAMBIAR: usar invitación normal, NO auto-sync
   type GroupInvitation 
 } from '@/firebase'
 
 // IMPORTAR SISTEMA AUTOMÁTICO SIMPLIFICADO
 import {
   createAutoSyncGroup,
-  addMemberAutoSync,
   removeMemberAutoSync,
   subscribeToUserGroupsAutoSync,
   migrateExistingGroupsToAutoSync,
@@ -65,7 +65,6 @@ const createNewGroup = async () => {
   error.value = null
 
   try {
-    // Usar la función auto-sync
     await createAutoSyncGroup({
       name: newGroup.value.name.trim(),
       description: newGroup.value.description.trim(),
@@ -74,11 +73,10 @@ const createNewGroup = async () => {
       pendingInvitations: []
     })
 
-    success.value = '🚀 Grupo creado y sincronizado automáticamente (Web ↔ Móvil) ✅'
+    success.value = '🚀 Grupo creado exitosamente con auto-sincronización ✅'
     newGroup.value = { name: '', description: '' }
     showCreateGroup.value = false
     
-    // Actualizar salud de sincronización
     await updateSyncHealth()
   } catch (err: any) {
     error.value = err.message || 'Error al crear el grupo'
@@ -87,7 +85,7 @@ const createNewGroup = async () => {
   }
 }
 
-// Invitar usuario con auto-sync
+// CORREGIDO: Enviar invitación por correo (NO automático)
 const inviteUser = async () => {
   if (!inviteForm.value.email.trim() || !selectedGroup.value) {
     error.value = 'El email es requerido'
@@ -100,27 +98,45 @@ const inviteUser = async () => {
     return
   }
 
+  // Verificar que no sea el mismo usuario
+  if (inviteForm.value.email === userStore.user?.email) {
+    error.value = 'No puedes invitarte a ti mismo'
+    return
+  }
+
+  // Verificar que no sea ya miembro
+  if (selectedGroup.value.members.includes(inviteForm.value.email)) {
+    error.value = 'Este usuario ya es miembro del grupo'
+    return
+  }
+
   inviteForm.value.loading = true
   error.value = null
 
   try {
-    // Usar la función auto-sync para agregar miembro
-    await addMemberAutoSync(selectedGroup.value.id, inviteForm.value.email.trim())
+    // USAR LA FUNCIÓN CORRECTA: enviar invitación por correo
+    await sendGroupInvitation({
+      groupId: selectedGroup.value.id,
+      groupName: selectedGroup.value.name,
+      inviterEmail: userStore.user?.email || '',
+      inviterName: userStore.user?.email?.split('@')[0] || 'Usuario',
+      inviteeEmail: inviteForm.value.email.trim()
+    })
 
-    success.value = `📱 ${inviteForm.value.email} agregado automáticamente (Web ↔ Móvil) ✅`
+    success.value = `📧 Invitación enviada a ${inviteForm.value.email}. Debe aceptarla para unirse al grupo.`
     inviteForm.value.email = ''
     showInviteModal.value = false
+    selectedGroup.value = null
     
-    // Actualizar salud de sincronización
     await updateSyncHealth()
   } catch (err: any) {
-    error.value = err.message || 'Error al agregar miembro'
+    error.value = err.message || 'Error al enviar la invitación'
   } finally {
     inviteForm.value.loading = false
   }
 }
 
-// Responder a invitación (mantiene la lógica original)
+// Responder a invitación
 const respondInvitation = async (invitationId: string, response: 'accepted' | 'rejected') => {
   loading.value = true
   error.value = null
@@ -128,7 +144,7 @@ const respondInvitation = async (invitationId: string, response: 'accepted' | 'r
   try {
     await respondToInvitation(invitationId, response)
     success.value = response === 'accepted' 
-      ? '✅ Te has unido al grupo (sincronizado automáticamente)' 
+      ? '✅ Te has unido al grupo exitosamente' 
       : 'Invitación rechazada'
   } catch (err: any) {
     error.value = err.message || 'Error al responder la invitación'
@@ -146,9 +162,7 @@ const removeMember = async (groupId: string, memberEmail: string) => {
 
   try {
     await removeMemberAutoSync(groupId, memberEmail)
-    success.value = '🗑️ Miembro removido automáticamente (Web ↔ Móvil) ✅'
-    
-    // Actualizar salud de sincronización
+    success.value = '🗑️ Miembro removido del grupo ✅'
     await updateSyncHealth()
   } catch (err: any) {
     error.value = err.message || 'Error al remover el miembro'
@@ -238,6 +252,14 @@ const getGroupBadgeColor = (group: UnifiedGroup): string => {
   }
 }
 
+// Obtener el nombre del usuario desde el email
+const getUserDisplayName = (email: string): string => {
+  if (email === userStore.user?.email) {
+    return 'Tú'
+  }
+  return email.split('@')[0]
+}
+
 let unsubscribeGroups: (() => void) | null = null
 let unsubscribeInvitations: (() => void) | null = null
 
@@ -246,7 +268,6 @@ onMounted(async () => {
 
   console.log('🚀 Iniciando auto-sync para:', userStore.user.email)
 
-  // Suscribirse a grupos con auto-sync
   unsubscribeGroups = await subscribeToUserGroupsAutoSync(
     userStore.user.email,
     (groups) => {
@@ -255,15 +276,12 @@ onMounted(async () => {
     }
   )
 
-  // Suscribirse a invitaciones (lógica original)
   unsubscribeInvitations = subscribeToUserInvitations(userStore.user.email, (invitations) => {
     pendingInvitations.value = invitations
   })
 
-  // Actualizar salud de sincronización
   await updateSyncHealth()
 
-  // Ejecutar migración automática si es necesario
   if (autoSyncHealth.value.healthPercentage < 100 && autoSyncHealth.value.totalGroups > 0) {
     console.log('🔄 Ejecutando migración automática...')
     setTimeout(() => runAutoMigration(), 3000)
@@ -399,21 +417,29 @@ onUnmounted(() => {
     </div>
 
     <!-- Crear grupo -->
-    <div class="bg-white rounded-lg shadow p-6">
+    <div class="bg-white rounded-lg shadow-sm border p-6">
       <div class="flex justify-between items-center mb-4">
-        <h3 class="text-lg font-semibold text-gray-800">Mis Grupos (Auto-Sync Web ↔ Móvil) 🔄</h3>
+        <h3 class="text-lg font-semibold text-gray-800 flex items-center">
+          <svg class="w-5 h-5 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+          </svg>
+          Mis Grupos
+        </h3>
         <button
           @click="showCreateGroup = !showCreateGroup"
-          class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white text-sm rounded-lg transition-colors"
+          class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white text-sm rounded-lg transition-colors flex items-center"
         >
-          + Crear Grupo
+          <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+          </svg>
+          Crear Grupo
         </button>
       </div>
 
       <!-- Formulario crear grupo -->
       <div v-if="showCreateGroup" class="mb-6 p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-lg border border-green-200">
         <h4 class="font-medium text-gray-800 mb-3 flex items-center">
-          🚀 Nuevo Grupo (Se sincroniza automáticamente con móvil)
+          🚀 Nuevo Grupo (Auto-Sync)
         </h4>
         <div class="space-y-3">
           <div>
@@ -437,18 +463,17 @@ onUnmounted(() => {
               maxlength="200"
             ></textarea>
           </div>
-          <div class="bg-blue-50 p-3 rounded border border-blue-200">
-            <p class="text-sm text-blue-800 flex items-center">
-              ℹ️ Este grupo será accesible automáticamente desde tu app móvil usando UIDs de usuario
-            </p>
-          </div>
           <div class="flex gap-2">
             <button
               @click="createNewGroup"
               :disabled="loading"
               class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white text-sm rounded-lg transition-colors disabled:opacity-50 flex items-center"
             >
-              {{ loading ? '🔄 Creando...' : '🚀 Crear y Auto-Sincronizar' }}
+              <svg v-if="loading" class="w-4 h-4 mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span>{{ loading ? 'Creando...' : 'Crear' }}</span>
             </button>
             <button
               @click="showCreateGroup = false"
@@ -460,166 +485,243 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Lista de grupos -->
-      <div v-if="userGroups.length === 0 && !showCreateGroup" class="text-center py-8 text-gray-500">
-        <svg class="w-12 h-12 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+      <!-- Lista de grupos CORREGIDA -->
+      <div v-if="userGroups.length === 0 && !showCreateGroup" class="text-center py-12 text-gray-500">
+        <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 715.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
         </svg>
-        <p>No tienes grupos aún</p>
-        <p class="text-sm">Crea tu primer grupo para empezar la sincronización automática</p>
+        <p class="text-lg font-medium">No tienes grupos aún</p>
+        <p class="text-sm mt-1">Crea tu primer grupo</p>
       </div>
 
+      <!-- LISTA DE GRUPOS CORREGIDA - DISEÑO SIMPLE Y CLARO -->
       <div v-else class="space-y-4">
         <div 
           v-for="group in userGroups" 
           :key="group.id"
-          class="border rounded-lg p-4 hover:shadow-md transition-shadow relative"
-          :class="{
-            'border-green-200 bg-green-50': group.isAutoSynced && group.membersUids?.length,
-            'border-yellow-200 bg-yellow-50': group.isAutoSynced && !group.membersUids?.length,
-            'border-red-200 bg-red-50': !group.isAutoSynced
-          }"
+          class="border rounded-lg p-4 bg-white hover:shadow-md transition-shadow"
         >
-          <!-- Badge de estado -->
-          <div class="absolute top-2 right-2">
-            <span class="px-2 py-1 text-xs rounded-full font-medium border"
-                  :class="getGroupBadgeColor(group)">
-              {{ getGroupStatus(group) }}
-            </span>
-          </div>
-
-          <div class="flex justify-between items-start mb-3 pr-32">
-            <div>
-              <h4 class="font-medium text-gray-800">{{ group.name }}</h4>
-              <p v-if="group.description" class="text-sm text-gray-600 mt-1">{{ group.description }}</p>
-              <p class="text-xs text-gray-500 mt-1">
+          <!-- Header del grupo -->
+          <div class="flex justify-between items-start mb-4">
+            <div class="flex-1">
+              <h4 class="text-lg font-semibold text-gray-800 mb-1">{{ group.name }}</h4>
+              <p v-if="group.description" class="text-sm text-gray-600 mb-2">{{ group.description }}</p>
+              <div class="flex items-center text-xs text-gray-500">
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                </svg>
                 Creado por: {{ group.createdBy === userStore.user?.email ? 'Ti' : group.createdBy }}
-              </p>
-              <!-- Información de sincronización mejorada -->
-              <div class="mt-2 text-xs space-y-1">
-                <p v-if="group.lastSyncUpdate" class="text-purple-600">
-                  🔄 Última sync: {{ new Date(group.lastSyncUpdate).toLocaleString() }}
-                </p>
-                <p v-if="group.membersUids?.length" class="text-blue-600">
-                  📱 UIDs sincronizados: {{ group.membersUids.length }}/{{ group.members.length }} miembros
-                </p>
-                <p v-if="group.mobileGroupId" class="text-green-600">
-                  📱 ID Móvil: {{ group.mobileGroupId }}
-                </p>
               </div>
             </div>
-            <div class="flex gap-2 flex-col">
+            
+            <!-- Botones de acción -->
+            <div class="flex flex-col gap-2">
               <button
                 @click="openInviteModal(group)"
-                class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-lg transition-colors"
+                class="px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-lg transition-colors flex items-center"
               >
-                + Agregar Miembro
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path>
+                </svg>
+                Invitar
               </button>
+              
               <button
                 v-if="!group.isAutoSynced || !group.membersUids?.length"
                 @click="forceSyncSpecificGroup(group.id)"
                 :disabled="loading"
-                class="px-3 py-1 bg-orange-500 hover:bg-orange-600 text-white text-xs rounded-lg transition-colors disabled:opacity-50"
+                class="px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs rounded-lg transition-colors disabled:opacity-50"
               >
-                🔄 Forzar Sync
+                🔄 Sync
               </button>
             </div>
           </div>
 
-          <!-- Miembros -->
+          <!-- LISTA DE MIEMBROS CORREGIDA - DISEÑO SIMPLE -->
           <div>
-            <h5 class="text-sm font-medium text-gray-700 mb-2">
+            <h5 class="text-sm font-semibold text-gray-700 mb-3 flex items-center">
+              <svg class="w-4 h-4 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z"></path>
+              </svg>
               Miembros ({{ group.members.length }})
             </h5>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+            
+            <!-- DISEÑO SIMPLE DE LISTA - UNA COLUMNA -->
+            <div class="space-y-2">
               <div 
                 v-for="(member, index) in group.members" 
                 :key="member"
-                class="flex items-center justify-between text-sm bg-white rounded px-3 py-2"
+                class="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
               >
-                <div class="flex items-center">
-                  <span :class="member === userStore.user?.email ? 'font-medium' : ''">
-                    {{ member === userStore.user?.email ? `${member} (Tú)` : member }}
-                  </span>
-                  <!-- Indicador de UID sincronizado -->
-                  <span v-if="group.membersUids && group.membersUids[index]" 
-                        class="ml-2 text-green-500 text-xs" 
-                        :title="`UID: ${group.membersUids[index]}`">
-                    📱✅
-                  </span>
+                <div class="flex items-center flex-1">
+                  <!-- Avatar simple -->
+                  <div class="w-8 h-8 rounded-full flex items-center justify-center mr-3 text-white text-sm font-semibold"
+                       :class="member === userStore.user?.email ? 'bg-green-500' : 'bg-blue-500'">
+                    {{ getUserDisplayName(member).charAt(0).toUpperCase() }}
+                  </div>
+                  
+                  <!-- Info del miembro -->
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-gray-900"
+                       :class="member === userStore.user?.email ? 'text-green-700' : ''">
+                      {{ getUserDisplayName(member) }}
+                      <span v-if="group.createdBy === member" class="text-yellow-500 ml-1">👑</span>
+                    </p>
+                    <p class="text-xs text-gray-500 truncate">{{ member }}</p>
+                  </div>
+
+                  <!-- Indicadores de estado -->
+                  <div class="flex items-center space-x-2 ml-2">
+                    <span v-if="group.membersUids && group.membersUids[index]" 
+                          class="text-green-500 text-sm" title="Sincronizado con móvil">
+                      📱✅
+                    </span>
+                    <span v-else-if="group.isAutoSynced" 
+                          class="text-orange-500 text-sm" title="Pendiente de sincronizar">
+                      📱⏳
+                    </span>
+                  </div>
                 </div>
-                <div class="flex items-center gap-2">
-                  <button
-                    v-if="group.createdBy === userStore.user?.email && member !== userStore.user?.email"
-                    @click="removeMember(group.id, member)"
-                    class="text-red-500 hover:text-red-700 text-xs"
-                    title="Remover miembro"
-                  >
-                    ✕
-                  </button>
-                </div>
+                
+                <!-- Botón eliminar -->
+                <button
+                  v-if="group.createdBy === userStore.user?.email && member !== userStore.user?.email"
+                  @click="removeMember(group.id, member)"
+                  class="text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-50 transition-colors ml-2"
+                  title="Remover miembro"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                  </svg>
+                </button>
               </div>
             </div>
           </div>
 
           <!-- Invitaciones pendientes -->
-          <div v-if="group.pendingInvitations && group.pendingInvitations.length > 0" class="mt-3">
-            <h5 class="text-sm font-medium text-gray-700 mb-2">
+          <div v-if="group.pendingInvitations && group.pendingInvitations.length > 0" class="mt-4 pt-4 border-t border-gray-200">
+            <h5 class="text-sm font-medium text-gray-700 mb-3 flex items-center">
+              <svg class="w-4 h-4 mr-2 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
               Invitaciones Pendientes ({{ group.pendingInvitations.length }})
             </h5>
-            <div class="flex flex-wrap gap-2">
-              <span 
+            <div class="space-y-2">
+              <div 
                 v-for="email in group.pendingInvitations" 
                 :key="email"
-                class="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded"
+                class="flex items-center justify-between p-2 bg-yellow-50 rounded-lg border border-yellow-200"
               >
-                {{ email }}
-              </span>
+                <div class="flex items-center">
+                  <svg class="w-4 h-4 mr-2 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                  </svg>
+                  <span class="text-sm text-gray-700">{{ email }}</span>
+                </div>
+                <span class="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">
+                  📧 Enviada
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Estado de sincronización -->
+          <div v-if="group.isAutoSynced" class="mt-4 pt-4 border-t border-gray-200">
+            <div class="flex items-center justify-between text-sm">
+              <div class="flex items-center text-purple-600">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                Auto-Sync Activo
+              </div>
+              <div class="text-xs text-gray-600">
+                UIDs: {{ group.membersUids?.length || 0 }}/{{ group.members.length }}
+              </div>
             </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Modal de invitación / agregar miembro -->
-    <div v-if="showInviteModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-        <h3 class="text-lg font-semibold text-gray-800 mb-4">
-          Agregar Miembro a: {{ selectedGroup?.name }}
-        </h3>
+    <!-- Modal de invitación CORREGIDO -->
+    <div v-if="showInviteModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md mx-4">
+        <div class="text-center mb-6">
+          <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 mb-4">
+            <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+            </svg>
+          </div>
+          <h3 class="text-xl font-semibold text-gray-900 mb-2">
+            Enviar Invitación
+          </h3>
+          <p class="text-sm text-gray-600">
+            Grupo: <span class="font-medium text-blue-600">{{ selectedGroup?.name }}</span>
+          </p>
+        </div>
         
         <div class="space-y-4">
-          <div class="bg-blue-50 p-3 rounded border border-blue-200">
-            <p class="text-sm text-blue-800 flex items-center">
-              🔄 El miembro será agregado automáticamente en web y móvil usando su UID
-            </p>
+          <!-- Información importante CORREGIDA -->
+          <div class="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-lg border border-blue-200">
+            <div class="flex items-start">
+              <svg class="w-5 h-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+              </svg>
+              <div>
+                <p class="text-sm font-medium text-blue-800 mb-1">Invitación por Correo</p>
+                <p class="text-xs text-blue-700">
+                  Se enviará una invitación por email. El usuario debe aceptarla para unirse al grupo.
+                </p>
+              </div>
+            </div>
           </div>
 
+          <!-- Campo de email -->
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Email del usuario</label>
-            <input
-              v-model="inviteForm.email"
-              type="email"
-              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="usuario@correo.com"
-              @keyup.enter="inviteUser"
-            />
-            <p class="text-xs text-gray-500 mt-1">
-              💡 El usuario debe estar registrado en el sistema para obtener su UID
+            <label class="block text-sm font-medium text-gray-700 mb-2">
+              Email del usuario *
+            </label>
+            <div class="relative">
+              <input
+                v-model="inviteForm.email"
+                type="email"
+                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                placeholder="usuario@correo.com"
+                :disabled="inviteForm.loading"
+                @keyup.enter="inviteUser"
+              />
+              <svg class="absolute right-3 top-3 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+              </svg>
+            </div>
+            <p class="text-xs text-gray-500 mt-2 flex items-center">
+              <svg class="w-4 h-4 mr-1 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+              El usuario recibirá un correo para aceptar la invitación
             </p>
           </div>
           
-          <div class="flex gap-2">
+          <!-- Botones de acción -->
+          <div class="flex gap-3 pt-2">
             <button
               @click="inviteUser"
-              :disabled="inviteForm.loading"
-              class="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center"
+              :disabled="inviteForm.loading || !inviteForm.email.trim()"
+              class="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center font-medium"
             >
-              {{ inviteForm.loading ? '🔄 Agregando...' : '🚀 Agregar y Sincronizar' }}
+              <svg v-if="inviteForm.loading" class="w-4 h-4 mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <svg v-else class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+              </svg>
+              <span>{{ inviteForm.loading ? 'Enviando...' : 'Enviar Invitación' }}</span>
             </button>
             <button
-              @click="showInviteModal = false"
-              class="px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-700 rounded-lg transition-colors"
+              @click="showInviteModal = false; selectedGroup = null"
+              :disabled="inviteForm.loading"
+              class="px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors disabled:opacity-50 font-medium"
             >
               Cancelar
             </button>
@@ -629,3 +731,4 @@ onUnmounted(() => {
     </div>
   </div>
 </template>
+
