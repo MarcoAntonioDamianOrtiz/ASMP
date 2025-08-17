@@ -4,7 +4,7 @@ import { useUserStore } from '@/stores/user'
 import { 
   respondToInvitation,
   subscribeToUserInvitations,
-  sendGroupInvitation,  // CAMBIAR: usar invitación normal, NO auto-sync
+  sendGroupInvitation,  // CORREGIDO: usar invitación por correo
   type GroupInvitation 
 } from '@/firebase'
 
@@ -252,12 +252,13 @@ const getGroupBadgeColor = (group: UnifiedGroup): string => {
   }
 }
 
-// Obtener el nombre del usuario desde el email
-const getUserDisplayName = (email: string): string => {
+// CORREGIDO: Obtener el nombre del usuario desde el email con límite de longitud
+const getUserDisplayName = (email: string, maxLength: number = 15): string => {
   if (email === userStore.user?.email) {
     return 'Tú'
   }
-  return email.split('@')[0]
+  const name = email.split('@')[0]
+  return name.length > maxLength ? name.substring(0, maxLength) + '...' : name
 }
 
 let unsubscribeGroups: (() => void) | null = null
@@ -386,16 +387,16 @@ onUnmounted(() => {
           class="bg-white rounded-lg p-4 border"
         >
           <div class="flex justify-between items-start">
-            <div>
-              <h4 class="font-medium text-gray-800">{{ invitation.groupName }}</h4>
-              <p class="text-sm text-gray-600">
+            <div class="min-w-0 flex-1 pr-3">
+              <h4 class="font-medium text-gray-800 truncate">{{ invitation.groupName }}</h4>
+              <p class="text-sm text-gray-600 truncate">
                 Invitado por: {{ invitation.inviterName }} ({{ invitation.inviterEmail }})
               </p>
               <p class="text-xs text-gray-500 mt-1">
                 {{ new Date(invitation.createdAt.toDate()).toLocaleDateString() }}
               </p>
             </div>
-            <div class="flex gap-2">
+            <div class="flex gap-2 flex-shrink-0">
               <button
                 @click="respondInvitation(invitation.id, 'accepted')"
                 :disabled="loading"
@@ -421,7 +422,7 @@ onUnmounted(() => {
       <div class="flex justify-between items-center mb-4">
         <h3 class="text-lg font-semibold text-gray-800 flex items-center">
           <svg class="w-5 h-5 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 715.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
           </svg>
           Mis Grupos
         </h3>
@@ -471,7 +472,7 @@ onUnmounted(() => {
             >
               <svg v-if="loading" class="w-4 h-4 mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
               <span>{{ loading ? 'Creando...' : 'Crear' }}</span>
             </button>
@@ -485,37 +486,37 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Lista de grupos CORREGIDA -->
+      <!-- Lista de grupos CORREGIDA PARA EVITAR DESBORDAMIENTO -->
       <div v-if="userGroups.length === 0 && !showCreateGroup" class="text-center py-12 text-gray-500">
         <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 715.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 715.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
         </svg>
         <p class="text-lg font-medium">No tienes grupos aún</p>
         <p class="text-sm mt-1">Crea tu primer grupo</p>
       </div>
 
-      <!-- LISTA DE GRUPOS CORREGIDA - DISEÑO SIMPLE Y CLARO -->
+      <!-- LISTA DE GRUPOS CORREGIDA - DISEÑO RESPONSIVO -->
       <div v-else class="space-y-4">
         <div 
           v-for="group in userGroups" 
           :key="group.id"
           class="border rounded-lg p-4 bg-white hover:shadow-md transition-shadow"
         >
-          <!-- Header del grupo -->
+          <!-- Header del grupo CORREGIDO PARA EVITAR DESBORDAMIENTO -->
           <div class="flex justify-between items-start mb-4">
-            <div class="flex-1">
-              <h4 class="text-lg font-semibold text-gray-800 mb-1">{{ group.name }}</h4>
-              <p v-if="group.description" class="text-sm text-gray-600 mb-2">{{ group.description }}</p>
-              <div class="flex items-center text-xs text-gray-500">
-                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="flex-1 min-w-0 pr-4">
+              <h4 class="text-lg font-semibold text-gray-800 mb-1 truncate" :title="group.name">{{ group.name }}</h4>
+              <p v-if="group.description" class="text-sm text-gray-600 mb-2 line-clamp-2" :title="group.description">{{ group.description }}</p>
+              <div class="flex items-center text-xs text-gray-500 min-w-0">
+                <svg class="w-4 h-4 mr-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
                 </svg>
-                Creado por: {{ group.createdBy === userStore.user?.email ? 'Ti' : group.createdBy }}
+                <span class="truncate">Creado por: {{ group.createdBy === userStore.user?.email ? 'Ti' : getUserDisplayName(group.createdBy, 20) }}</span>
               </div>
             </div>
             
             <!-- Botones de acción -->
-            <div class="flex flex-col gap-2">
+            <div class="flex flex-col gap-2 flex-shrink-0">
               <button
                 @click="openInviteModal(group)"
                 class="px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-lg transition-colors flex items-center"
@@ -537,41 +538,42 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- LISTA DE MIEMBROS CORREGIDA - DISEÑO SIMPLE -->
+          <!-- LISTA DE MIEMBROS CORREGIDA - DISEÑO RESPONSIVE -->
           <div>
             <h5 class="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-              <svg class="w-4 h-4 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-4 h-4 mr-2 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z"></path>
               </svg>
               Miembros ({{ group.members.length }})
             </h5>
             
-            <!-- DISEÑO SIMPLE DE LISTA - UNA COLUMNA -->
+            <!-- DISEÑO RESPONSIVO DE LISTA DE MIEMBROS -->
             <div class="space-y-2">
               <div 
                 v-for="(member, index) in group.members" 
                 :key="member"
                 class="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
               >
-                <div class="flex items-center flex-1">
+                <div class="flex items-center flex-1 min-w-0">
                   <!-- Avatar simple -->
-                  <div class="w-8 h-8 rounded-full flex items-center justify-center mr-3 text-white text-sm font-semibold"
+                  <div class="w-8 h-8 rounded-full flex items-center justify-center mr-3 text-white text-sm font-semibold flex-shrink-0"
                        :class="member === userStore.user?.email ? 'bg-green-500' : 'bg-blue-500'">
                     {{ getUserDisplayName(member).charAt(0).toUpperCase() }}
                   </div>
                   
-                  <!-- Info del miembro -->
+                  <!-- Info del miembro CORREGIDA PARA RESPONSIVIDAD -->
                   <div class="flex-1 min-w-0">
-                    <p class="text-sm font-medium text-gray-900"
-                       :class="member === userStore.user?.email ? 'text-green-700' : ''">
-                      {{ getUserDisplayName(member) }}
+                    <p class="text-sm font-medium text-gray-900 truncate"
+                       :class="member === userStore.user?.email ? 'text-green-700' : ''"
+                       :title="getUserDisplayName(member)">
+                      {{ getUserDisplayName(member, 20) }}
                       <span v-if="group.createdBy === member" class="text-yellow-500 ml-1">👑</span>
                     </p>
-                    <p class="text-xs text-gray-500 truncate">{{ member }}</p>
+                    <p class="text-xs text-gray-500 truncate" :title="member">{{ member }}</p>
                   </div>
 
-                  <!-- Indicadores de estado -->
-                  <div class="flex items-center space-x-2 ml-2">
+                  <!-- Indicadores de estado MEJORADOS -->
+                  <div class="flex items-center space-x-2 ml-2 flex-shrink-0">
                     <span v-if="group.membersUids && group.membersUids[index]" 
                           class="text-green-500 text-sm" title="Sincronizado con móvil">
                       📱✅
@@ -587,7 +589,7 @@ onUnmounted(() => {
                 <button
                   v-if="group.createdBy === userStore.user?.email && member !== userStore.user?.email"
                   @click="removeMember(group.id, member)"
-                  class="text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-50 transition-colors ml-2"
+                  class="text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-50 transition-colors ml-2 flex-shrink-0"
                   title="Remover miembro"
                 >
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -598,10 +600,10 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- Invitaciones pendientes -->
+          <!-- Invitaciones pendientes CORREGIDAS -->
           <div v-if="group.pendingInvitations && group.pendingInvitations.length > 0" class="mt-4 pt-4 border-t border-gray-200">
             <h5 class="text-sm font-medium text-gray-700 mb-3 flex items-center">
-              <svg class="w-4 h-4 mr-2 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-4 h-4 mr-2 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
               </svg>
               Invitaciones Pendientes ({{ group.pendingInvitations.length }})
@@ -612,13 +614,13 @@ onUnmounted(() => {
                 :key="email"
                 class="flex items-center justify-between p-2 bg-yellow-50 rounded-lg border border-yellow-200"
               >
-                <div class="flex items-center">
-                  <svg class="w-4 h-4 mr-2 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div class="flex items-center flex-1 min-w-0">
+                  <svg class="w-4 h-4 mr-2 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
                   </svg>
-                  <span class="text-sm text-gray-700">{{ email }}</span>
+                  <span class="text-sm text-gray-700 truncate" :title="email">{{ email }}</span>
                 </div>
-                <span class="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">
+                <span class="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full flex-shrink-0">
                   📧 Enviada
                 </span>
               </div>
@@ -628,13 +630,13 @@ onUnmounted(() => {
           <!-- Estado de sincronización -->
           <div v-if="group.isAutoSynced" class="mt-4 pt-4 border-t border-gray-200">
             <div class="flex items-center justify-between text-sm">
-              <div class="flex items-center text-purple-600">
-                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div class="flex items-center text-purple-600 min-w-0">
+                <svg class="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                 </svg>
-                Auto-Sync Activo
+                <span class="truncate">Auto-Sync Activo</span>
               </div>
-              <div class="text-xs text-gray-600">
+              <div class="text-xs text-gray-600 flex-shrink-0">
                 UIDs: {{ group.membersUids?.length || 0 }}/{{ group.members.length }}
               </div>
             </div>
@@ -656,7 +658,7 @@ onUnmounted(() => {
             Enviar Invitación
           </h3>
           <p class="text-sm text-gray-600">
-            Grupo: <span class="font-medium text-blue-600">{{ selectedGroup?.name }}</span>
+            Grupo: <span class="font-medium text-blue-600 truncate">{{ selectedGroup?.name }}</span>
           </p>
         </div>
         
@@ -667,7 +669,7 @@ onUnmounted(() => {
               <svg class="w-5 h-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
               </svg>
-              <div>
+              <div class="min-w-0">
                 <p class="text-sm font-medium text-blue-800 mb-1">Invitación por Correo</p>
                 <p class="text-xs text-blue-700">
                   Se enviará una invitación por email. El usuario debe aceptarla para unirse al grupo.
@@ -695,10 +697,10 @@ onUnmounted(() => {
               </svg>
             </div>
             <p class="text-xs text-gray-500 mt-2 flex items-center">
-              <svg class="w-4 h-4 mr-1 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-4 h-4 mr-1 text-yellow-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
               </svg>
-              El usuario recibirá un correo para aceptar la invitación
+              <span>El usuario recibirá un correo para aceptar la invitación</span>
             </p>
           </div>
           
@@ -707,21 +709,21 @@ onUnmounted(() => {
             <button
               @click="inviteUser"
               :disabled="inviteForm.loading || !inviteForm.email.trim()"
-              class="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center font-medium"
+              class="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center font-medium min-w-0"
             >
-              <svg v-if="inviteForm.loading" class="w-4 h-4 mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
+              <svg v-if="inviteForm.loading" class="w-4 h-4 mr-2 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              <svg v-else class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg v-else class="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
               </svg>
-              <span>{{ inviteForm.loading ? 'Enviando...' : 'Enviar Invitación' }}</span>
+              <span class="truncate">{{ inviteForm.loading ? 'Enviando...' : 'Enviar Invitación' }}</span>
             </button>
             <button
               @click="showInviteModal = false; selectedGroup = null"
               :disabled="inviteForm.loading"
-              class="px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors disabled:opacity-50 font-medium"
+              class="px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors disabled:opacity-50 font-medium flex-shrink-0"
             >
               Cancelar
             </button>
@@ -732,3 +734,31 @@ onUnmounted(() => {
   </div>
 </template>
 
+<style scoped>
+/* Clase para truncar texto en múltiples líneas */
+.line-clamp-2 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* Mejorar la responsividad */
+.min-w-0 {
+  min-width: 0;
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flex-shrink-0 {
+  flex-shrink: 0;
+}
+
+.flex-1 {
+  flex: 1 1 0%;
+}
+</style>
