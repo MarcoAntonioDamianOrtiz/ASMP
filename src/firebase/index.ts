@@ -261,7 +261,9 @@ export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> 
         activa: data.activa,
         name: data.name,
         timestamp: data.timestamp,
-        mensaje: data.mensaje
+        mensaje: data.mensaje,
+        // Agregando logs para ver todos los campos
+        allFields: Object.keys(data)
       });
       
       // Validar que la alerta tiene los campos necesarios
@@ -282,7 +284,10 @@ export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> 
           [data.ubicacion.lng, data.ubicacion.lat] : undefined,
         timestamp: data.timestamp,
         type: 'panic' as const,
-        resolved: data.activa === false, // ✅ activa: false = resuelta, activa: true o undefined = activa
+        // ✅ CORRECCIÓN CRÍTICA: Las alertas del móvil NO tienen campo 'activa'
+        // Las alertas del móvil están siempre ACTIVAS por defecto (resolved: false)
+        // Solo se resuelven si explícitamente tienen resolved: true
+        resolved: data.resolved === true ? true : false,
         groupId: data.circleId,
         message: data.mensaje || '',
         phone: data.phone || '',
@@ -333,7 +338,10 @@ export const subscribeToGroupAlerts = (
         circleId: data.circleId,
         activa: data.activa,
         timestamp: data.timestamp,
-        name: data.name
+        name: data.name,
+        resolved: data.resolved,
+        // Mostrando todos los campos para debug
+        allFields: Object.keys(data)
       });
       
       // Validar datos esenciales
@@ -354,7 +362,8 @@ export const subscribeToGroupAlerts = (
           [data.ubicacion.lng, data.ubicacion.lat] : undefined,
         timestamp: data.timestamp,
         type: 'panic' as const,
-        resolved: data.activa === false,
+        // ✅ CORRECCIÓN CRÍTICA: Alertas móviles siempre están ACTIVAS por defecto
+        resolved: data.resolved === true ? true : false,
         groupId: data.circleId,
         message: data.mensaje || '',
         phone: data.phone || '',
