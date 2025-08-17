@@ -4,7 +4,7 @@ import { useUserStore } from '@/stores/user'
 import { 
   respondToInvitation,
   subscribeToUserInvitations,
-  sendGroupInvitation,  // CORREGIDO: usar invitación por correo
+  inviteToGroup,  // CORREGIDO: usar la función correcta
   type GroupInvitation 
 } from '@/firebase'
 
@@ -85,7 +85,7 @@ const createNewGroup = async () => {
   }
 }
 
-// CORREGIDO: Enviar invitación por correo (NO automático)
+// CORREGIDO: Enviar invitación usando la función correcta
 const inviteUser = async () => {
   if (!inviteForm.value.email.trim() || !selectedGroup.value) {
     error.value = 'El email es requerido'
@@ -114,14 +114,15 @@ const inviteUser = async () => {
   error.value = null
 
   try {
-    // USAR LA FUNCIÓN CORRECTA: enviar invitación por correo
-    await sendGroupInvitation({
-      groupId: selectedGroup.value.id,
-      groupName: selectedGroup.value.name,
-      inviterEmail: userStore.user?.email || '',
-      inviterName: userStore.user?.email?.split('@')[0] || 'Usuario',
-      inviteeEmail: inviteForm.value.email.trim()
-    })
+    // USAR LA FUNCIÓN CORRECTA: inviteToGroup del index.ts
+    await inviteToGroup(
+      selectedGroup.value.id,
+      inviteForm.value.email.trim(),
+      {
+        email: userStore.user?.email || '',
+        name: userStore.user?.email?.split('@')[0] || 'Usuario'
+      }
+    )
 
     success.value = `📧 Invitación enviada a ${inviteForm.value.email}. Debe aceptarla para unirse al grupo.`
     inviteForm.value.email = ''
