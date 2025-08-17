@@ -394,73 +394,6 @@ export const resolveGroupAlert = async (alertId: string): Promise<void> => {
   }
 };
 
-export const getGroupAlertStats = async (groupId: string): Promise<{
-  total: number;
-  active: number;
-  resolved: number;
-  today: number;
-  thisWeek: number;
-  thisMonth: number;
-}> => {
-  try {
-    console.log('📊 Calculando estadísticas de alertas para grupo:', groupId);
-    
-    const alerts = await getGroupAlerts(groupId);
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const thisWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    
-    const stats = {
-      total: alerts.length,
-      active: 0,
-      resolved: 0,
-      today: 0,
-      thisWeek: 0,
-      thisMonth: 0
-    };
-    
-    alerts.forEach(alert => {
-      // Convertir timestamp correctamente
-      let alertDate: Date;
-      
-      if (alert.timestamp?.toDate) {
-        alertDate = alert.timestamp.toDate();
-      } else if (alert.timestamp?.seconds) {
-        alertDate = new Date(alert.timestamp.seconds * 1000);
-      } else {
-        alertDate = new Date(alert.timestamp);
-      }
-      
-      if (isNaN(alertDate.getTime())) {
-        console.warn('⚠️ Fecha inválida en alerta:', alert.id, alert.timestamp);
-        return;
-      }
-      
-      // Contar por estado
-      if (alert.resolved) {
-        stats.resolved++;
-      } else {
-        stats.active++;
-      }
-      
-      // Contar por período
-      if (alertDate >= today) stats.today++;
-      if (alertDate >= thisWeek) stats.thisWeek++;
-      if (alertDate >= thisMonth) stats.thisMonth++;
-    });
-    
-    console.log('📊 Estadísticas calculadas:', stats);
-    return stats;
-    
-  } catch (error) {
-    console.error('❌ Error getting group alert stats:', error);
-    return {
-      total: 0, active: 0, resolved: 0, today: 0, thisWeek: 0, thisMonth: 0
-    };
-  }
-};
-
 // Funciones auxiliares para debugging
 export const debugGroupAlerts = async (groupId: string): Promise<void> => {
   try {
@@ -1608,4 +1541,142 @@ export interface UnifiedGroup {
     uid: string;
     rol?: string;
   }>;
-}
+};
+
+// Al final de tu index.ts, después de todas las otras funciones
+export const getGroupAlertStats = async (groupId: string): Promise<{
+  total: number;
+  active: number;
+  resolved: number;
+  today: number;
+  thisWeek: number;
+  thisMonth: number;
+}> => {
+  try {
+    console.log('📊 Calculando estadísticas de alertas para grupo:', groupId);
+    
+    const alerts = await getGroupAlerts(groupId);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const thisWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    
+    const stats = {
+      total: alerts.length,
+      active: 0,
+      resolved: 0,
+      today: 0,
+      thisWeek: 0,
+      thisMonth: 0
+    };
+    
+    alerts.forEach(alert => {
+      let alertDate: Date;
+      
+      if (alert.timestamp?.toDate) {
+        alertDate = alert.timestamp.toDate();
+      } else if (alert.timestamp?.seconds) {
+        alertDate = new Date(alert.timestamp.seconds * 1000);
+      } else {
+        alertDate = new Date(alert.timestamp);
+      }
+      
+      if (isNaN(alertDate.getTime())) {
+        console.warn('⚠️ Fecha inválida en alerta:', alert.id, alert.timestamp);
+        return;
+      }
+      
+      if (alert.resolved) {
+        stats.resolved++;
+      } else {
+        stats.active++;
+      }
+      
+      if (alertDate >= today) stats.today++;
+      if (alertDate >= thisWeek) stats.thisWeek++;
+      if (alertDate >= thisMonth) stats.thisMonth++;
+    });
+    
+    console.log('📊 Estadísticas calculadas:', stats);
+    return stats;
+    
+  } catch (error) {
+    console.error('❌ Error getting group alert stats:', error);
+    return {
+      total: 0, active: 0, resolved: 0, today: 0, thisWeek: 0, thisMonth: 0
+    };
+  }
+};
+
+export const testGroupAlerts = async (groupId: string = 'r0uNHyaM0Ux2vJPxdWBh'): Promise<void> => {
+  console.log('🧪 PROBANDO ALERTAS PARA GRUPO:', groupId);
+  
+  try {
+    // 1. Verificar que el grupo existe
+    const groupDoc = await getDoc(doc(db, 'circulos', groupId));
+    console.log('✅ Grupo existe:', groupDoc.exists());
+    
+    if (!groupDoc.exists()) {
+      console.log('❌ El grupo no existe');
+      return;
+    }
+    
+    // 2. Contar todas las alertas en la colección
+    const allAlertsSnapshot = await getDocs(collection(db, 'alertasCirculos'));
+    console.log('📊 Total alertas en BD:', allAlertsSnapshot.docs.length);
+    
+    // 3. Mostrar todas las alertas
+    allAlertsSnapshot.docs.forEach((doc, index) => {
+      const data = doc.data();
+      console.log(`📄 Alerta ${index + 1}:`, {
+        id: doc.id,
+        circleId: data.circleId,
+        name: data.name,
+        activa: data.activa,
+        mensaje: data.mensaje,
+        timestamp: data.timestamp
+      });
+    });
+    
+    // 4. Buscar alertas específicas del grupo
+    const q = query(
+      collection(db, 'alertasCirculos'),
+      where('circleId', '==', groupId)
+    );
+    
+    const snapshot = await getDocs(q);
+    console.log(`🎯 Alertas encontradas para grupo ${groupId}:`, snapshot.docs.length);
+    
+    // 5. Mostrar alertas del grupo
+    snapshot.docs.forEach((doc, index) => {
+      const data = doc.data();
+      console.log(`🚨 Alerta del grupo ${index + 1}:`, {
+        id: doc.id,
+        name: data.name,
+        email: data.email,
+        mensaje: data.mensaje,
+        activa: data.activa,
+        timestamp: data.timestamp?.toDate?.() || data.timestamp,
+        ubicacion: data.ubicacion
+      });
+    });
+    
+    // 6. Probar función getGroupAlerts
+    console.log('🔄 Probando función getGroupAlerts...');
+    const alerts = await getGroupAlerts(groupId);
+    console.log('📋 Resultado getGroupAlerts:', alerts.length, 'alertas');
+    
+    alerts.forEach((alert, index) => {
+      console.log(`📌 Alerta procesada ${index + 1}:`, {
+        id: alert.id,
+        userName: alert.userName,
+        resolved: alert.resolved,
+        location: alert.location,
+        timestamp: alert.timestamp
+      });
+    });
+    
+  } catch (error) {
+    console.error('❌ Error en testGroupAlerts:', error);
+  }
+};

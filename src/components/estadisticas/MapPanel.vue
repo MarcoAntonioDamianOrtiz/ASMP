@@ -454,7 +454,6 @@ const updateMarkers = () => {
         bounds.extend([location.lng, location.lat])
       }
     })
-    
     if (!bounds.isEmpty()) {
       map.value.fitBounds(bounds, {
         padding: 50,
