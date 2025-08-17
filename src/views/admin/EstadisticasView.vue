@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { 
-  subscribeToAlerts, 
   respondToInvitation,
   subscribeToUserInvitations,
   inviteToGroup,
+  resolveGroupAlert, // Nueva función
+  subscribeToGroupAlerts, // Nueva función
+  getUserGroupsAlerts, // Nueva función
+  getGroupAlertStats, // Nueva función
   type FirebaseAlert,
   type GroupInvitation 
 } from '@/firebase'
@@ -26,11 +29,21 @@ import { useUserStore } from '@/stores/user'
 
 const userStore = useUserStore()
 const userGroups = ref<UnifiedGroup[]>([])
-const alerts = ref<FirebaseAlert[]>([])
+const groupAlerts = ref<(FirebaseAlert & { message: string; phone: string; destinatarios: string[]; emisorId: string })[]>([])
 const pendingInvitations = ref<GroupInvitation[]>([])
 const loading = ref(true)
 const selectedGroup = ref<UnifiedGroup | null>(null)
 const alertFilter = ref<'dia' | 'semana' | 'mes'>('dia')
+
+// Estados para estadísticas de alertas
+const alertStats = ref({
+  total: 0,
+  active: 0,
+  resolved: 0,
+  today: 0,
+  thisWeek: 0,
+  thisMonth: 0
+})
 
 // Estados para crear grupo
 const showCreateGroup = ref(false)
@@ -62,8 +75,15 @@ const inviteForm = ref({
 const error = ref<string | null>(null)
 const success = ref<string | null>(null)
 
-// Computed para filtrar alertas según el período seleccionado
+// Variable para manejar la suscripción a alertas
+let unsubscribeGroupAlerts: (() => void) | null = null
+
+// Computed para filtrar alertas según el período seleccionado Y el grupo seleccionado
 const filteredAlerts = computed(() => {
+  if (!selectedGroup.value || !selectedGroup.value.id) {
+    return []
+  }
+
   const now = new Date()
   let filterDate = new Date()
   
@@ -79,10 +99,9 @@ const filteredAlerts = computed(() => {
       break
   }
   
-  return alerts.value.filter(alert => {
+  return groupAlerts.value.filter(alert => {
     // VALIDAR QUE LA ALERTA TENGA DATOS VÁLIDOS
-    if (!alert || !alert.timestamp) {
-      console.warn('Alerta sin timestamp válido:', alert)
+    if (!alert || !alert.timestamp || alert.groupId !== selectedGroup.value?.id) {
       return false
     }
     
@@ -102,6 +121,104 @@ const filteredAlerts = computed(() => {
   })
 })
 
+// Función para formatear ubicación
+const formatLocation = (alert: any): string => {
+  if (alert.coordinates && alert.coordinates.length === 2) {
+    const [lng, lat] = alert.coordinates
+    return `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+  }
+  return alert.location || 'Ubicación no disponible'
+}
+
+// Función para obtener el tiempo relativo
+const getRelativeTime = (timestamp: any): string => {
+  const date = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp)
+  const now = new Date()
+  const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60))
+  
+  if (diffInMinutes < 1) return 'Hace un momento'
+  if (diffInMinutes < 60) return `Hace ${diffInMinutes} minuto${diffInMinutes > 1 ? 's' : ''}`
+  
+  const diffInHours = Math.floor(diffInMinutes / 60)
+  if (diffInHours < 24) return `Hace ${diffInHours} hora${diffInHours > 1 ? 's' : ''}`
+  
+  const diffInDays = Math.floor(diffInHours / 24)
+  if (diffInDays < 7) return `Hace ${diffInDays} día${diffInDays > 1 ? 's' : ''}`
+  
+  return date.toLocaleDateString('es-ES', { 
+    day: '2-digit', 
+    month: 'short', 
+    year: 'numeric',
+    hour: '2-digit', 
+    minute: '2-digit' 
+  })
+}
+
+// Función para resolver alerta
+const resolveAlert = async (alertId: string) => {
+  try {
+    await resolveGroupAlert(alertId)
+    success.value = 'Alerta marcada como resuelta'
+    // Las alertas se actualizarán automáticamente por la suscripción
+  } catch (err: any) {
+    error.value = err.message || 'Error al resolver la alerta'
+  }
+}
+
+// Función para actualizar las estadísticas de alertas
+const updateAlertStats = async () => {
+  if (!selectedGroup.value?.id) {
+    alertStats.value = {
+      total: 0, active: 0, resolved: 0, today: 0, thisWeek: 0, thisMonth: 0
+    }
+    return
+  }
+  
+  try {
+    const stats = await getGroupAlertStats(selectedGroup.value.id)
+    alertStats.value = stats
+  } catch (error) {
+    console.error('Error actualizando estadísticas de alertas:', error)
+  }
+}
+
+// Función para suscribirse a las alertas del grupo seleccionado
+const subscribeToSelectedGroupAlerts = (groupId: string) => {
+  // Limpiar suscripción anterior si existe
+  if (unsubscribeGroupAlerts) {
+    unsubscribeGroupAlerts()
+    unsubscribeGroupAlerts = null
+  }
+  
+  if (!groupId) {
+    groupAlerts.value = []
+    return
+  }
+  
+  console.log('🚨 Suscribiéndose a alertas del grupo:', groupId)
+  
+  unsubscribeGroupAlerts = subscribeToGroupAlerts(groupId, (alerts) => {
+    console.log(`📍 ${alerts.length} alertas recibidas para el grupo ${groupId}`)
+    groupAlerts.value = alerts as any[]
+    updateAlertStats()
+  })
+}
+
+// Watcher para cambios en el grupo seleccionado
+watch(selectedGroup, (newGroup, oldGroup) => {
+  if (newGroup?.id !== oldGroup?.id) {
+    if (newGroup?.id) {
+      subscribeToSelectedGroupAlerts(newGroup.id)
+    } else {
+      groupAlerts.value = []
+      if (unsubscribeGroupAlerts) {
+        unsubscribeGroupAlerts()
+        unsubscribeGroupAlerts = null
+      }
+    }
+  }
+}, { immediate: true })
+
 // FUNCIÓN PARA VALIDAR COORDENADAS
 const validateCoordinates = (lat: any, lng: any) => {
   const numLat = parseFloat(lat)
@@ -112,27 +229,9 @@ const validateCoordinates = (lat: any, lng: any) => {
          numLng >= -180 && numLng <= 180
 }
 
-// FUNCIÓN PARA VALIDAR DATOS DE UBICACIÓN
-const validateLocationData = (locationData: any) => {
-  if (!locationData) return false
-  
-  // Verificar si tiene coordenadas válidas
-  if (locationData.latitude !== undefined && locationData.longitude !== undefined) {
-    return validateCoordinates(locationData.latitude, locationData.longitude)
-  }
-  
-  // Si tiene lat/lng en lugar de latitude/longitude
-  if (locationData.lat !== undefined && locationData.lng !== undefined) {
-    return validateCoordinates(locationData.lat, locationData.lng)
-  }
-  
-  return false
-}
-
 // FUNCIÓN PARA MANEJAR ERRORES DEL MAPA
 const handleMapError = (error: any) => {
   console.error('Error en MapPanel:', error)
-  // Puedes manejar el error aquí si es necesario
 }
 
 // Crear grupo con auto-sincronización
@@ -179,13 +278,11 @@ const inviteUser = async () => {
     return
   }
 
-  // Verificar que no sea el mismo usuario
   if (inviteForm.value.email === userStore.user?.email) {
     error.value = 'No puedes invitarte a ti mismo'
     return
   }
 
-  // Verificar que no sea ya miembro
   if (selectedGroupForInvite.value.members.includes(inviteForm.value.email)) {
     error.value = 'Este usuario ya es miembro del grupo'
     return
@@ -277,11 +374,13 @@ const selectGroup = (group: UnifiedGroup | null) => {
 }
 
 // Obtener color para el estado de alerta
-const getAlertTypeColor = (type: string) => {
+const getAlertTypeColor = (type: string, resolved: boolean) => {
+  if (resolved) return 'bg-gray-100 text-gray-600 border-gray-200'
+  
   switch (type) {
     case 'panic': return 'bg-red-100 text-red-800 border-red-200'
     case 'geofence': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
-    default: return 'bg-gray-100 text-gray-800 border-gray-200'
+    default: return 'bg-orange-100 text-orange-800 border-orange-200'
   }
 }
 
@@ -312,7 +411,6 @@ const clearMessages = () => {
 }
 
 let unsubscribeUserGroups: (() => void) | null = null
-let unsubscribeAlerts: (() => void) | null = null
 let unsubscribeInvitations: (() => void) | null = null
 
 onMounted(async () => {
@@ -327,43 +425,18 @@ onMounted(async () => {
       console.log('📊 Grupos auto-sync actualizados:', groups.length)
       userGroups.value = groups
       loading.value = false
+      
+      // Seleccionar el primer grupo automáticamente si no hay ninguno seleccionado
       if (groups.length > 0 && !selectedGroup.value) {
         selectedGroup.value = groups[0]
       }
+      
+      // Si el grupo seleccionado ya no existe, seleccionar otro
+      if (selectedGroup.value && !groups.find(g => g.id === selectedGroup.value?.id)) {
+        selectedGroup.value = groups[0] || null
+      }
     }
   )
-
-  // SUSCRIBIRSE A ALERTAS CON VALIDACIÓN MEJORADA
-  unsubscribeAlerts = subscribeToAlerts((alertsData) => {
-    console.log('📍 Alertas recibidas:', alertsData.length)
-    
-    // FILTRAR ALERTAS CON DATOS VÁLIDOS
-    const validAlerts = alertsData.filter(alert => {
-      if (!alert) {
-        console.warn('Alerta nula o undefined')
-        return false
-      }
-      
-      // Validar timestamp
-      if (!alert.timestamp) {
-        console.warn('Alerta sin timestamp:', alert)
-        return false
-      }
-      
-      // Validar ubicación si existe
-      if (alert.location && typeof alert.location === 'object') {
-        if (!validateLocationData(alert.location)) {
-          console.warn('Alerta con ubicación inválida:', alert.location)
-          // No descartamos la alerta, solo loggeamos el warning
-        }
-      }
-      
-      return true
-    })
-    
-    console.log('📍 Alertas válidas:', validAlerts.length)
-    alerts.value = validAlerts
-  })
 
   // Suscribirse a invitaciones pendientes
   unsubscribeInvitations = subscribeToUserInvitations(userStore.user.email, (invitations) => {
@@ -382,7 +455,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (unsubscribeUserGroups) unsubscribeUserGroups()
-  if (unsubscribeAlerts) unsubscribeAlerts()
+  if (unsubscribeGroupAlerts) unsubscribeGroupAlerts()
   if (unsubscribeInvitations) unsubscribeInvitations()
 })
 </script>
@@ -587,7 +660,7 @@ onUnmounted(() => {
               </button>
             </div>
             
-            <!-- INDICADOR DE SALUD DE SINCRONIZACIÓN SIN FONDO VERDE -->
+            <!-- INDICADOR DE SALUD DE SINCRONIZACIÓN -->
             <div class="mb-4 p-3 bg-white border border-gray-200 rounded-lg shadow-sm">
               <div class="flex justify-between items-center text-xs mb-2">
                 <span class="text-gray-700 font-medium flex items-center">
@@ -701,7 +774,7 @@ onUnmounted(() => {
                 v-for="group in userGroups" 
                 :key="group.id"
                 class="border rounded-lg p-4 bg-white hover:shadow-md transition-all cursor-pointer"
-                :class="{ 'border-blue-500 shadow-md': selectedGroup?.id === group.id }"
+                :class="{ 'border-blue-500 shadow-md bg-blue-50': selectedGroup?.id === group.id }"
                 @click="selectGroup(group)"
               >
                 <!-- Header del grupo -->
@@ -720,21 +793,13 @@ onUnmounted(() => {
                   <!-- Botones de acción -->
                   <div class="flex flex-col gap-2 flex-shrink-0">
                     <button
-                      @click="openInviteModal(group)"
+                      @click.stop="openInviteModal(group)"
                       class="px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-lg transition-colors flex items-center"
                     >
                       <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path>
                       </svg>
                       Invitar
-                    </button>
-                    
-                    <button
-                      v-if="selectedGroup?.id === group.id"
-                      @click="selectGroup(null)"
-                      class="px-3 py-2 bg-gray-500 hover:bg-gray-600 text-white text-xs rounded-lg transition-colors"
-                    >
-                      Deseleccionar
                     </button>
                   </div>
                 </div>
@@ -820,7 +885,7 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- Panel derecho - Alertas -->
+        <!-- Panel derecho - Alertas del Grupo Seleccionado -->
         <div class="w-80 bg-white border-l border-gray-200 flex flex-col flex-shrink-0 shadow-sm">
           <!-- Header de alertas con filtros -->
           <div class="p-4 border-b border-gray-200 bg-gradient-to-r from-red-50 to-orange-50">
@@ -829,12 +894,37 @@ onUnmounted(() => {
                 <svg class="w-5 h-5 mr-2 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.996-.833-2.764 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
                 </svg>
-                <span class="truncate">Alertas Recientes</span>
+                <span class="truncate">Alertas del Grupo</span>
               </h2>
               <span class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full flex-shrink-0">
                 {{ filteredAlerts.length }}
               </span>
             </div>
+
+            <!-- Nombre del grupo seleccionado -->
+            <div v-if="selectedGroup" class="mb-4 p-3 bg-white border border-gray-200 rounded-lg">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center min-w-0">
+                  <svg class="w-4 h-4 mr-2 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                  </svg>
+                  <span class="text-sm font-medium text-gray-800 truncate" :title="selectedGroup.name">
+                    {{ selectedGroup.name }}
+                  </span>
+                </div>
+                </div>
+            </div>
+          
+
+            <div v-else class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div class="flex items-center">
+                <svg class="w-4 h-4 mr-2 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <span class="text-sm text-yellow-700">Selecciona un grupo para ver sus alertas</span>
+              </div>
+            </div>
+
             <!-- Filtros de tiempo -->
             <div class="flex space-x-1 bg-gray-100 rounded-lg p-1">
               <button
@@ -859,24 +949,38 @@ onUnmounted(() => {
           
           <!-- Lista de alertas -->
           <div class="flex-1 overflow-y-auto p-4">
-            <div v-if="filteredAlerts.length === 0" class="flex flex-col items-center justify-center py-12 text-gray-500">
+            <div v-if="!selectedGroup" class="flex flex-col items-center justify-center py-12 text-gray-500">
+              <svg class="w-16 h-16 mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 715.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+              </svg>
+              <p class="text-lg font-medium">Selecciona un grupo</p>
+              <p class="text-sm mt-1">Para ver las alertas del grupo</p>
+            </div>
+
+            <div v-else-if="filteredAlerts.length === 0" class="flex flex-col items-center justify-center py-12 text-gray-500">
               <svg class="w-16 h-16 mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
               </svg>
-              <p class="text-lg font-medium">No hay alertas</p>
-              <p class="text-sm mt-1">En el período seleccionado</p>
+              <p class="text-lg font-medium">Sin alertas</p>
+              <p class="text-sm mt-1">No hay alertas en el período seleccionado</p>
             </div>
             
             <div v-else class="space-y-3">
               <div 
                 v-for="alert in filteredAlerts" 
                 :key="alert.id"
-                class="bg-gray-50 border rounded-lg p-4 hover:shadow-md transition-all"
+                class="border rounded-lg p-4 hover:shadow-md transition-all"
+                :class="alert.resolved ? 'bg-gray-50 border-gray-200' : 'bg-red-50 border-red-200'"
               >
                 <!-- Header de la alerta -->
                 <div class="flex items-start justify-between mb-3">
                   <div class="flex items-center flex-1 min-w-0">
-                    <div class="w-3 h-3 bg-red-500 rounded-full mr-3 mt-1 flex-shrink-0 animate-pulse"></div>
+                    <div 
+                      :class="[
+                        'w-3 h-3 rounded-full mr-3 mt-1 flex-shrink-0',
+                        alert.resolved ? 'bg-gray-400' : 'bg-red-500 animate-pulse'
+                      ]"
+                    ></div>
                     <div class="min-w-0 flex-1">
                       <h4 class="font-medium text-gray-900 text-sm truncate" :title="alert.userName">
                         {{ alert.userName }}
@@ -884,50 +988,118 @@ onUnmounted(() => {
                       <p class="text-xs text-gray-600 truncate" :title="alert.userEmail">
                         {{ alert.userEmail }}
                       </p>
+                      <p v-if="alert.phone" class="text-xs text-gray-500 truncate">
+                        📞 {{ alert.phone }}
+                      </p>
                     </div>
                   </div>
-                  <span :class="[
-                    'px-2 py-1 text-xs rounded-full border ml-2 flex-shrink-0',
-                    getAlertTypeColor(alert.type)
-                  ]">
-                    {{ alert.type === 'panic' ? 'Pánico' : alert.type === 'geofence' ? 'Geocerca' : 'Manual' }}
-                  </span>
+                  <div class="flex flex-col items-end gap-2 flex-shrink-0">
+                    <span :class="[
+                      'px-2 py-1 text-xs rounded-full border',
+                      getAlertTypeColor(alert.type, alert.resolved)
+                    ]">
+                      {{ alert.resolved ? 'Resuelta' : 'SOS Activa' }}
+                    </span>
+                    <div class="text-xs text-gray-500">
+                      {{ getRelativeTime(alert.timestamp) }}
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Mensaje de la alerta -->
+                <div v-if="alert.message" class="mb-3 p-3 bg-white border border-gray-200 rounded-lg">
+                  <div class="flex items-start">
+                    <svg class="w-4 h-4 mr-2 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                    </svg>
+                    <p class="text-sm text-gray-700">{{ alert.message }}</p>
+                  </div>
                 </div>
                 
                 <!-- Detalles de la alerta -->
-                <div class="space-y-2">
+                <div class="space-y-2 mb-3">
+                  <!-- Ubicación -->
                   <div class="flex items-start text-xs text-gray-600">
-                    <svg class="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-4 h-4 mr-2 mt-0.5 flex-shrink-0 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
                     </svg>
-                    <span class="break-words" :title="alert.location">{{ alert.location }}</span>
+                    <div class="flex-1 min-w-0">
+                      <p class="font-medium text-gray-700 mb-1">Ubicación de emergencia:</p>
+                      <p class="break-words font-mono" :title="formatLocation(alert)">
+                        {{ formatLocation(alert) }}
+                      </p>
+                      <!-- Botón para abrir en Google Maps -->
+                      <button 
+                        v-if="alert.coordinates"
+                        @click="window.open(`https://www.google.com/maps?q=${alert.coordinates[1]},${alert.coordinates[0]}`, '_blank')"
+                        class="mt-2 px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs rounded transition-colors flex items-center"
+                      >
+                        <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                        </svg>
+                        Ver en Maps
+                      </button>
+                    </div>
                   </div>
+
+                  <!-- Fecha y hora detallada -->
                   <div class="flex items-center text-xs text-gray-600">
                     <svg class="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                     </svg>
-                    <span class="truncate">
+                    <span>
                       {{ new Date(alert.timestamp?.toDate ? alert.timestamp.toDate() : alert.timestamp).toLocaleDateString('es-ES', { 
-                        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' 
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long', 
+                        day: 'numeric',
+                        hour: '2-digit', 
+                        minute: '2-digit',
+                        second: '2-digit'
                       }) }}
                     </span>
                   </div>
+
+                  <!-- Destinatarios de la alerta -->
+                  <div v-if="alert.destinatarios && alert.destinatarios.length > 0" class="flex items-start text-xs text-gray-600">
+                    <svg class="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                    </svg>
+                    <div>
+                      <p class="font-medium text-gray-700 mb-1">Notificado a {{ alert.destinatarios.length }} miembro(s)</p>
+                      <div class="text-xs text-gray-500">
+                        {{ alert.destinatarios.length }} persona(s) recibieron la alerta
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 
-                <!-- Estado de resolución -->
-                <div class="mt-3 pt-3 border-t border-gray-200">
+                <!-- Acciones -->
+                <div class="pt-3 border-t border-gray-200">
                   <div v-if="alert.resolved" class="flex items-center text-xs text-green-600">
                     <svg class="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
                     </svg>
-                    <span class="truncate">Alerta resuelta</span>
+                    <span>Alerta resuelta</span>
                   </div>
-                  <div v-else class="flex items-center text-xs text-orange-600">
-                    <svg class="w-4 h-4 mr-2 animate-pulse flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
-                    </svg>
-                    <span class="truncate">Pendiente de resolución</span>
+                  <div v-else class="flex items-center justify-between">
+                    <div class="flex items-center text-xs text-red-600">
+                      <svg class="w-4 h-4 mr-2 animate-pulse flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                      </svg>
+                      <span>Alerta activa</span>
+                    </div>
+                    <!-- Botón para resolver alerta -->
+                    <button
+                      @click="resolveAlert(alert.id)"
+                      class="px-3 py-1 bg-green-500 hover:bg-green-600 text-white text-xs rounded-lg transition-colors flex items-center"
+                    >
+                      <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                      </svg>
+                      Resolver
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1082,10 +1254,5 @@ onUnmounted(() => {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #555;
-}
-
-/* Remover fondo verde personalizado */
-.custom-green-bg {
-  background: #f9fafb; /* Usar bg-gray-50 en lugar del verde */
 }
 </style>

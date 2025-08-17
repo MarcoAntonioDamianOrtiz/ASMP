@@ -42,3 +42,181 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
+
+/* ESTILOS ADICIONALES PARA LA UI CON TEMA VERDE */
+
+/* Scroll personalizado con tema verde */
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: #F0F8F4;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #2D8F5F;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #1F6344;
+}
+
+/* Transiciones suaves */
+.transition-smooth {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Efectos de hover */
+.hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(45, 143, 95, 0.2);
+}
+
+/* Gradientes verdes personalizados */
+.gradient-green {
+    background: linear-gradient(135deg, #2D8F5F 0%, #1F6344 100%);
+}
+
+.gradient-green-light {
+    background: linear-gradient(135deg, #F0F8F4 0%, #E8F5E8 100%);
+}
+
+.gradient-green-radial {
+    background: radial-gradient(circle at center, #2D8F5F 0%, #1F6344 100%);
+}
+
+/* Sistema de botones verde */
+.btn-green-primary {
+    background: linear-gradient(135deg, #2D8F5F 0%, #1F6344 100%);
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.75rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 4px 6px rgba(45, 143, 95, 0.25);
+}
+
+.btn-green-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(45, 143, 95, 0.4);
+}
+
+.btn-green-secondary {
+    background: transparent;
+    color: #2D8F5F;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.75rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    border: 2px solid #2D8F5F;
+    cursor: pointer;
+}
+
+.btn-green-secondary:hover {
+    background: linear-gradient(135deg, #2D8F5F 0%, #1F6344 100%);
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(45, 143, 95, 0.3);
+}
+
+/* Cards con diseño verde elegante */
+.card-green-elegant {
+    background: linear-gradient(145deg, #ffffff 0%, #f8fffe 100%);
+    border: 1px solid rgba(45, 143, 95, 0.1);
+    border-radius: 1rem;
+    box-shadow: 0 4px 6px rgba(45, 143, 95, 0.1), 0 2px 4px rgba(45, 143, 95, 0.06);
+    transition: all 0.3s ease;
+}
+
+.card-green-elegant:hover {
+    border-color: rgba(45, 143, 95, 0.3);
+    box-shadow: 0 10px 25px rgba(45, 143, 95, 0.15), 0 4px 10px rgba(45, 143, 95, 0.1);
+    transform: translateY(-4px);
+}
+
+/* Headers premium */
+.header-green-premium {
+    background: linear-gradient(135deg, #F0F8F4 0%, #E8F5E8 50%, #F0F8F4 100%);
+    border-bottom: 3px solid #2D8F5F;
+    position: relative;
+}
+
+.header-green-premium::after {
+    content: '';
+    position: absolute;
+    bottom: -3px;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #2D8F5F, transparent);
+}
+
+/* Sistema de badges moderno */
+.badge-green-modern {
+    background: linear-gradient(135deg, #E8F5E8 0%, #F0F8F4 100%);
+    color: #1F6344;
+    padding: 0.5rem 1rem;
+    border-radius: 2rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    border: 1px solid rgba(45, 143, 95, 0.2);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.badge-green-solid-modern {
+    background: linear-gradient(135deg, #2D8F5F 0%, #1F6344 100%);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 2rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    box-shadow: 0 2px 4px rgba(45, 143, 95, 0.3);
+}
+
+/* Mensajes de estado mejorados */
+.alert-success-green {
+    background: linear-gradient(135deg, #F0F8F4 0%, #E8F5E8 100%);
+    border: 2px solid #2D8F5F;
+    color: #1F6344;
+    padding: 1.25rem;
+    border-radius: 0.75rem;
+    box-shadow: 0 4px 6px rgba(45, 143, 95, 0.1);
+}
+
+/* Inputs con estilo premium */
+.input-green-premium {
+    transition: all 0.3s ease;
+    border: 2px solid #E8F5E8;
+    border-radius: 0.75rem;
+    padding: 0.875rem 1rem;
+    background: #fafffe;
+}
+
+.input-green-premium:focus {
+    outline: none;
+    border-color: #2D8F5F;
+    background: white;
+    box-shadow: 0 0 0 4px rgba(45, 143, 95, 0.1), 0 2px 4px rgba(45, 143, 95, 0.1);
+}
+
+/* Utilidades de color expandidas */
+.text-green-dark { color: #1F6344; }
+.text-green-main { color: #2D8F5F; }
+.text-green-light { color: #4ade80; }
+
+.bg-green-dark { background-color: #1F6344; }
+.bg-green-main { background-color: #2D8F5F; }
+.bg-green-ultra-light { background-color: #F0F8F4; }
+
+.border-green-main { border-color: #2D8F5F; }
+.border-green-light { border-color: #E8F5E8; }
