@@ -569,7 +569,7 @@ onUnmounted(() => {
             <div class="flex justify-between items-center mb-4">
               <h2 class="font-semibold text-gray-800 flex items-center">
                 <svg class="w-5 h-5 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 715.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
                 </svg>
                 <span class="truncate">Mis Grupos</span>
                 <span class="ml-2 bg-white px-2 py-1 rounded-full text-xs text-purple-600 border flex-shrink-0">
@@ -587,10 +587,10 @@ onUnmounted(() => {
               </button>
             </div>
             
-            <!-- INDICADOR DE SALUD DE SINCRONIZACIÓN -->
-            <div class="mb-4 p-3 bg-white border border-purple-200 rounded-lg shadow-sm">
+            <!-- INDICADOR DE SALUD DE SINCRONIZACIÓN SIN FONDO VERDE -->
+            <div class="mb-4 p-3 bg-white border border-gray-200 rounded-lg shadow-sm">
               <div class="flex justify-between items-center text-xs mb-2">
-                <span class="text-purple-700 font-medium flex items-center">
+                <span class="text-gray-700 font-medium flex items-center">
                   <svg class="w-4 h-4 mr-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                   </svg>
@@ -624,7 +624,7 @@ onUnmounted(() => {
             </div>
 
             <!-- Formulario crear grupo -->
-            <div v-if="showCreateGroup" class="mb-4 p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-lg border border-green-200">
+            <div v-if="showCreateGroup" class="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
               <h4 class="font-medium text-gray-800 mb-3 flex items-center">
                 <svg class="w-4 h-4 mr-2 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
@@ -676,8 +676,8 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- Lista de grupos -->
-          <div class="flex-1 overflow-y-auto">
+          <!-- Lista de grupos CON SCROLL ARREGLADO -->
+          <div class="flex-1 overflow-y-auto" style="max-height: calc(100vh - 450px);">
             <div v-if="userGroups.length === 0 && !loading" class="flex flex-col items-center justify-center py-12 text-gray-500">
               <svg class="w-16 h-16 mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 715.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
@@ -739,7 +739,7 @@ onUnmounted(() => {
                   </div>
                 </div>
 
-                <!-- Lista de miembros -->
+                <!-- Lista de miembros CON ALTURA FIJA Y SCROLL -->
                 <div>
                   <h5 class="text-sm font-semibold text-gray-700 mb-3 flex items-center">
                     <svg class="w-4 h-4 mr-2 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -748,7 +748,8 @@ onUnmounted(() => {
                     Miembros ({{ group.members.length }})
                   </h5>
                   
-                  <div class="space-y-2">
+                  <!-- Contenedor con scroll para miembros -->
+                  <div class="space-y-2 max-h-40 overflow-y-auto pr-2" :class="{ 'border-t border-gray-100 pt-2': group.members.length > 3 }">
                     <div 
                       v-for="(member, index) in group.members" 
                       :key="member"
