@@ -232,34 +232,50 @@ export const deleteGroup = async (groupId: string): Promise<void> => {
 // FUNCIONES DE ALERTAS CORREGIDAS
 export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> => {
   try {
+    console.log('🔍 Buscando alertas para el grupo (circleId):', groupId);
+    
     const q = query(
       collection(db, 'alertasCirculos'),
-      where('circleId', '==', groupId),
-      orderBy('timestamp', 'desc')
+      where('circleId', '==', groupId), // ✅ Usar circleId que es el correcto
+      orderBy('timestamp', 'desc'),
+      limit(100)
     );
+    
     const snapshot = await getDocs(q);
+    console.log(`📊 Encontrados ${snapshot.docs.length} documentos de alertas`);
     
     return snapshot.docs.map(doc => {
       const data = doc.data();
+      console.log('📄 Datos de alerta encontrada:', doc.id, {
+        circleId: data.circleId,
+        activa: data.activa,
+        name: data.name,
+        timestamp: data.timestamp
+      });
+      
       return {
         id: doc.id,
         userId: data.emisorId || '',
         userEmail: data.email || '',
         userName: data.name || 'Usuario desconocido',
-        location: data.ubicacion ? `${data.ubicacion.lat.toFixed(6)}, ${data.ubicacion.lng.toFixed(6)}` : 'Ubicación no disponible',
-        coordinates: data.ubicacion ? [data.ubicacion.lng, data.ubicacion.lat] : undefined,
+        location: data.ubicacion ? 
+          `${data.ubicacion.lat.toFixed(6)}, ${data.ubicacion.lng.toFixed(6)}` : 
+          'Ubicación no disponible',
+        coordinates: data.ubicacion ? 
+          [data.ubicacion.lng, data.ubicacion.lat] : undefined,
         timestamp: data.timestamp,
         type: 'panic',
-        resolved: data.activa === false,
-        groupId: data.circleId,
+        resolved: data.activa === false, // ✅ activa: false = resuelta
+        groupId: data.circleId, // ✅ Usar circleId como groupId
         message: data.mensaje || '',
         phone: data.phone || '',
         destinatarios: data.destinatarios || [],
         emisorId: data.emisorId || ''
       } as FirebaseAlert;
     });
+    
   } catch (error) {
-    console.error('Error getting group alerts:', error);
+    console.error('❌ Error getting group alerts:', error);
     return [];
   }
 };
@@ -268,11 +284,17 @@ export const subscribeToGroupAlerts = (
   groupId: string, 
   callback: (alerts: FirebaseAlert[]) => void
 ) => {
-  console.log('🚨 Suscribiéndose a alertas del grupo:', groupId);
+  console.log('🚨 Suscribiéndose a alertas del grupo (circleId):', groupId);
+  
+  if (!groupId) {
+    console.warn('⚠️ GroupId vacío');
+    callback([]);
+    return () => {};
+  }
   
   const q = query(
     collection(db, 'alertasCirculos'),
-    where('circleId', '==', groupId),
+    where('circleId', '==', groupId), // ✅ Usar circleId
     orderBy('timestamp', 'desc')
   );
   
@@ -284,12 +306,15 @@ export const subscribeToGroupAlerts = (
         userId: data.emisorId || '',
         userEmail: data.email || '',
         userName: data.name || 'Usuario desconocido',
-        location: data.ubicacion ? `${data.ubicacion.lat.toFixed(6)}, ${data.ubicacion.lng.toFixed(6)}` : 'Ubicación no disponible',
-        coordinates: data.ubicacion ? [data.ubicacion.lng, data.ubicacion.lat] : undefined,
+        location: data.ubicacion ? 
+          `${data.ubicacion.lat.toFixed(6)}, ${data.ubicacion.lng.toFixed(6)}` : 
+          'Ubicación no disponible',
+        coordinates: data.ubicacion ? 
+          [data.ubicacion.lng, data.ubicacion.lat] : undefined,
         timestamp: data.timestamp,
         type: 'panic',
         resolved: data.activa === false,
-        groupId: data.circleId,
+        groupId: data.circleId, // ✅ Usar circleId
         message: data.mensaje || '',
         phone: data.phone || '',
         destinatarios: data.destinatarios || [],
@@ -297,7 +322,7 @@ export const subscribeToGroupAlerts = (
       } as FirebaseAlert;
     });
     
-    console.log(`📍 ${alerts.length} alertas encontradas para el grupo ${groupId}`);
+    console.log(`📍 ${alerts.length} alertas encontradas para grupo ${groupId}`);
     callback(alerts);
   }, (error) => {
     console.error('Error in group alerts subscription:', error);
@@ -305,53 +330,15 @@ export const subscribeToGroupAlerts = (
   });
 };
 
-export const getUserGroupsAlerts = async (userGroups: string[]): Promise<FirebaseAlert[]> => {
-  try {
-    if (userGroups.length === 0) return [];
-    
-    const q = query(
-      collection(db, 'alertasCirculos'),
-      where('circleId', 'in', userGroups),
-      orderBy('timestamp', 'desc'),
-      limit(100)
-    );
-    
-    const snapshot = await getDocs(q);
-    
-    return snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        userId: data.emisorId || '',
-        userEmail: data.email || '',
-        userName: data.name || 'Usuario desconocido',
-        location: data.ubicacion ? `${data.ubicacion.lat.toFixed(6)}, ${data.ubicacion.lng.toFixed(6)}` : 'Ubicación no disponible',
-        coordinates: data.ubicacion ? [data.ubicacion.lng, data.ubicacion.lat] : undefined,
-        timestamp: data.timestamp,
-        type: 'panic',
-        resolved: data.activa === false,
-        groupId: data.circleId,
-        message: data.mensaje || '',
-        phone: data.phone || '',
-        destinatarios: data.destinatarios || [],
-        emisorId: data.emisorId || ''
-      } as FirebaseAlert;
-    });
-  } catch (error) {
-    console.error('Error getting user groups alerts:', error);
-    return [];
-  }
-};
-
 export const resolveGroupAlert = async (alertId: string): Promise<void> => {
   try {
+    console.log('✅ Resolviendo alerta:', alertId);
     const alertRef = doc(db, 'alertasCirculos', alertId);
     await updateDoc(alertRef, {
-      activa: false,
-      resolvedAt: new Date(),
-      resolved: true
+      activa: false, // ✅ Marcar como inactiva (resuelta)
+      resolvedAt: new Date()
     });
-    console.log('✅ Alerta marcada como resuelta:', alertId);
+    console.log('✅ Alerta resuelta exitosamente:', alertId);
   } catch (error) {
     console.error('❌ Error resolviendo alerta:', error);
     throw error;
@@ -375,31 +362,42 @@ export const getGroupAlertStats = async (groupId: string): Promise<{
     
     const stats = {
       total: alerts.length,
-      active: alerts.filter(a => !a.resolved).length,
-      resolved: alerts.filter(a => a.resolved).length,
+      active: 0,
+      resolved: 0,
       today: 0,
       thisWeek: 0,
       thisMonth: 0
     };
     
     alerts.forEach(alert => {
+      // Convertir timestamp correctamente
       const alertDate = alert.timestamp?.toDate ? alert.timestamp.toDate() : new Date(alert.timestamp);
       
+      if (isNaN(alertDate.getTime())) {
+        console.warn('Fecha inválida en alerta:', alert);
+        return;
+      }
+      
+      // Contar por estado (activa: false = resuelta)
+      if (alert.resolved) {
+        stats.resolved++;
+      } else {
+        stats.active++;
+      }
+      
+      // Contar por período
       if (alertDate >= today) stats.today++;
       if (alertDate >= thisWeek) stats.thisWeek++;
       if (alertDate >= thisMonth) stats.thisMonth++;
     });
     
+    console.log('📊 Estadísticas de alertas:', stats);
     return stats;
+    
   } catch (error) {
     console.error('Error getting group alert stats:', error);
     return {
-      total: 0,
-      active: 0,
-      resolved: 0,
-      today: 0,
-      thisWeek: 0,
-      thisMonth: 0
+      total: 0, active: 0, resolved: 0, today: 0, thisWeek: 0, thisMonth: 0
     };
   }
 };
@@ -1474,6 +1472,35 @@ export const forceSyncGroup = async (groupId: string): Promise<void> => {
   } catch (error) {
     console.error('❌ Error importando función de sincronización:', error);
     throw error;
+  }
+};
+
+export const debugGroupAlerts = async (groupId: string): Promise<void> => {
+  try {
+    console.log('🐛 DEBUG: Verificando alertas para circleId:', groupId);
+    
+    // Verificar que existen alertas con este circleId
+    const q = query(
+      collection(db, 'alertasCirculos'),
+      where('circleId', '==', groupId)
+    );
+    const snapshot = await getDocs(q);
+    
+    console.log(`🐛 Alertas encontradas: ${snapshot.docs.length}`);
+    snapshot.docs.forEach((doc, index) => {
+      const data = doc.data();
+      console.log(`🐛 Alerta ${index + 1}:`, {
+        id: doc.id,
+        circleId: data.circleId,
+        activa: data.activa,
+        name: data.name,
+        mensaje: data.mensaje,
+        timestamp: data.timestamp
+      });
+    });
+    
+  } catch (error) {
+    console.error('🐛 Error en debug:', error);
   }
 };
 
