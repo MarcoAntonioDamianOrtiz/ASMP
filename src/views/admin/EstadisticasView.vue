@@ -469,7 +469,7 @@ onUnmounted(() => {
       <LocationTracker />
     </div>
   
-    <div class="min-h-screen bg-gray-50 pt-20">
+    <div class="min-h-screen pt-20">
       <!-- Header compacto CON ESTADO DE AUTO-SYNC -->
       <div class="bg-white border-b border-gray-200 px-6 py-4 shadow-sm">
         <div class="flex items-center justify-between">
