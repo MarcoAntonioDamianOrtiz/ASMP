@@ -40,19 +40,51 @@ const currentPopup = ref<any>(null)
 // Tu token de Mapbox
 const MAPBOX_TOKEN = 'pk.eyJ1IjoiYW50b255MjcwNCIsImEiOiJjbWQweGg4d2IxOGdnMmtwemp3Nnp0YmIxIn0.-Hm3lVWw6U-NE10a0u2U2A'
 
-// FUNCIÓN MEJORADA para validar coordenadas
+// FUNCIÓN MEJORADA para validar coordenadas con más verificaciones
 const isValidCoordinate = (lat: any, lng: any): boolean => {
-  if (!lat || !lng) return false
-  if (lat === null || lng === null || lat === undefined || lng === undefined) return false
+  // Verificar que no sean null, undefined o cadenas vacías
+  if (lat == null || lng == null || lat === '' || lng === '') {
+    console.warn('🚫 Coordenadas nulas o vacías:', { lat, lng })
+    return false
+  }
   
+  // Convertir a número
   const numLat = Number(lat)
   const numLng = Number(lng)
   
-  if (isNaN(numLat) || isNaN(numLng)) return false
-  if (!isFinite(numLat) || !isFinite(numLng)) return false
-  if (numLat === 0 && numLng === 0) return false // Coordenadas por defecto inválidas
+  // Verificar que no sean NaN
+  if (isNaN(numLat) || isNaN(numLng)) {
+    console.warn('🚫 Coordenadas NaN después de conversión:', { lat, lng, numLat, numLng })
+    return false
+  }
   
-  return Math.abs(numLat) <= 90 && Math.abs(numLng) <= 180
+  // Verificar que sean finitos
+  if (!isFinite(numLat) || !isFinite(numLng)) {
+    console.warn('🚫 Coordenadas no finitas:', { numLat, numLng })
+    return false
+  }
+  
+  // Verificar que no sean (0, 0) - coordenadas por defecto
+  if (numLat === 0 && numLng === 0) {
+    console.warn('🚫 Coordenadas por defecto (0,0)')
+    return false
+  }
+  
+  // Verificar rangos válidos
+  if (Math.abs(numLat) > 90 || Math.abs(numLng) > 180) {
+    console.warn('🚫 Coordenadas fuera de rango:', { numLat, numLng })
+    return false
+  }
+  
+  return true
+}
+
+// Función auxiliar para sanitizar coordenadas
+const sanitizeCoordinate = (value: any): number | null => {
+  if (value == null || value === '') return null
+  const num = Number(value)
+  if (isNaN(num) || !isFinite(num)) return null
+  return num
 }
 
 // Función para generar colores consistentes para usuarios
@@ -65,7 +97,7 @@ const getUserColor = (name: string): string => {
   return colors[Math.abs(hash) % colors.length]
 }
 
-// Computed MEJORADO para mostrar ubicaciones relevantes con validación
+// Computed MEJORADO para mostrar ubicaciones relevantes con validación ESTRICTA
 const relevantLocations = computed(() => {
   const locations: FirebaseUbicacion[] = []
   
@@ -74,11 +106,20 @@ const relevantLocations = computed(() => {
   console.log('👥 Ubicaciones del grupo:', groupLocations.value.length)
   
   // Siempre mostrar mi ubicación si existe y es válida
-  if (myLocation.value && isValidCoordinate(myLocation.value.lat, myLocation.value.lng)) {
-    console.log('✅ Agregando mi ubicación válida')
-    locations.push(myLocation.value)
-  } else if (myLocation.value) {
-    console.warn('⚠️ Mi ubicación tiene coordenadas inválidas:', myLocation.value.lat, myLocation.value.lng)
+  if (myLocation.value) {
+    const myLat = sanitizeCoordinate(myLocation.value.lat)
+    const myLng = sanitizeCoordinate(myLocation.value.lng)
+    
+    if (myLat !== null && myLng !== null && isValidCoordinate(myLat, myLng)) {
+      console.log('✅ Mi ubicación válida:', myLat, myLng)
+      locations.push({
+        ...myLocation.value,
+        lat: myLat,
+        lng: myLng
+      })
+    } else {
+      console.warn('⚠️ Mi ubicación tiene coordenadas inválidas:', myLocation.value.lat, myLocation.value.lng)
+    }
   }
   
   // Si tengo un grupo seleccionado, mostrar ubicaciones del grupo
@@ -86,9 +127,16 @@ const relevantLocations = computed(() => {
     groupLocations.value.forEach(loc => {
       // No duplicar mi ubicación
       if (loc.userId !== userStore.user?.uid) {
-        if (isValidCoordinate(loc.lat, loc.lng)) {
-          console.log('✅ Agregando ubicación válida del miembro:', loc.userName)
-          locations.push(loc)
+        const locLat = sanitizeCoordinate(loc.lat)
+        const locLng = sanitizeCoordinate(loc.lng)
+        
+        if (locLat !== null && locLng !== null && isValidCoordinate(locLat, locLng)) {
+          console.log('✅ Ubicación válida del miembro:', loc.userName, locLat, locLng)
+          locations.push({
+            ...loc,
+            lat: locLat,
+            lng: locLng
+          })
         } else {
           console.warn('⚠️ Ubicación inválida del miembro:', loc.userName, loc.lat, loc.lng)
         }
@@ -340,7 +388,7 @@ const hideZonasRiesgo = () => {
   }
 }
 
-// FUNCIÓN CORREGIDA para actualizar marcadores con validación ESTRICTA de coordenadas
+// FUNCIÓN COMPLETAMENTE CORREGIDA para actualizar marcadores
 const updateMarkers = () => {
   if (!map.value) {
     console.log('🚫 Mapa no disponible para actualizar marcadores')
@@ -365,39 +413,46 @@ const updateMarkers = () => {
     return
   }
 
-  // Array para almacenar coordenadas válidas para el bounds
-  const validCoordinates: [number, number][] = []
+  // Array para almacenar SOLO coordenadas completamente validadas
+  const fullyValidatedCoordinates: [number, number][] = []
 
-  // Agregar marcadores de ubicaciones relevantes CON VALIDACIÓN ESTRICTA
+  // Agregar marcadores CON TRIPLE VALIDACIÓN
   relevantLocations.value.forEach(location => {
-    // VALIDACIÓN MÚLTIPLE DE COORDENADAS - MÁS ESTRICTA
+    console.log('🔍 Procesando ubicación:', location.userName, 'Coords raw:', location.lat, location.lng)
+    
+    // VALIDACIÓN NIVEL 1: Verificar que existen las propiedades
     if (!location.lat || !location.lng) {
-      console.warn('⚠️ Ubicación sin coordenadas:', location)
+      console.warn('❌ NIVEL 1: Ubicación sin coordenadas:', location.userName)
       return
     }
 
-    const lat = Number(location.lat)
-    const lng = Number(location.lng)
+    // VALIDACIÓN NIVEL 2: Sanitizar y convertir
+    const lat = sanitizeCoordinate(location.lat)
+    const lng = sanitizeCoordinate(location.lng)
 
-    // VALIDACIONES CRÍTICAS PARA EVITAR NaN
-    if (isNaN(lat) || isNaN(lng)) {
-      console.warn('❌ Coordenadas NaN para:', location.userName, 'lat:', location.lat, 'lng:', location.lng)
+    if (lat === null || lng === null) {
+      console.warn('❌ NIVEL 2: Coordenadas no sanitizables:', location.userName, location.lat, location.lng)
       return
     }
 
-    if (!isFinite(lat) || !isFinite(lng)) {
-      console.warn('❌ Coordenadas no finitas para:', location.userName, 'lat:', lat, 'lng:', lng)
+    console.log('🔍 Coordenadas sanitizadas:', location.userName, lat, lng)
+
+    // VALIDACIÓN NIVEL 3: Verificar validez final
+    if (!isValidCoordinate(lat, lng)) {
+      console.warn('❌ NIVEL 3: Coordenadas inválidas después de sanitización:', location.userName, lat, lng)
       return
     }
 
-    if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
-      console.warn('❌ Coordenadas fuera de rango para:', location.userName, 'lat:', lat, 'lng:', lng)
-      return
-    }
-
-    // Verificar que no sean coordenadas por defecto (0,0)
-    if (lat === 0 && lng === 0) {
-      console.warn('❌ Coordenadas por defecto (0,0) para:', location.userName)
+    // VALIDACIÓN NIVEL 4: Verificar que podemos crear LngLat sin errores
+    try {
+      // Test crear LngLat antes del marcador para detectar errores
+      const testLngLat = new (window as any).mapboxgl.LngLat(lng, lat)
+      if (!testLngLat || isNaN(testLngLat.lng) || isNaN(testLngLat.lat)) {
+        console.warn('❌ NIVEL 4: LngLat inválido:', location.userName, lng, lat)
+        return
+      }
+    } catch (lngLatError) {
+      console.error('❌ NIVEL 4: Error creando LngLat test:', location.userName, lngLatError)
       return
     }
 
@@ -407,7 +462,7 @@ const updateMarkers = () => {
       return
     }
 
-    console.log('📍 Creando marcador para:', location.userName, 'Coords:', lat, lng, 'Online:', location.isOnline)
+    console.log('✅ TODAS LAS VALIDACIONES PASADAS. Creando marcador para:', location.userName, 'Coords:', lat, lng)
 
     const color = isMyLocation ? '#ef4444' : getUserColor(location.userName)
       
@@ -484,15 +539,9 @@ const updateMarkers = () => {
     `)
 
     try {
-      // VALIDACIÓN FINAL ANTES DE CREAR EL MARCADOR
-      console.log('🎯 Intentando crear marcador en coordenadas:', [lng, lat])
+      console.log('🎯 CREANDO MARCADOR FINAL - Coordenadas:', [lng, lat])
       
-      // Verificar una vez más que las coordenadas son válidas
-      if (!isValidCoordinate(lat, lng)) {
-        console.error('❌ Coordenadas inválidas detectadas en validación final:', lat, lng)
-        return
-      }
-      
+      // CREACIÓN FINAL DEL MARCADOR CON TRY-CATCH ANIDADO
       const marker = new (window as any).mapboxgl.Marker(el)
         .setLngLat([lng, lat])
         .setPopup(popup)
@@ -505,63 +554,91 @@ const updateMarkers = () => {
 
       markers.value.set(location.userId, marker)
       
-      // SOLO agregar a validCoordinates si el marcador se creó exitosamente
-      validCoordinates.push([lng, lat])
+      // SOLO agregar a coordenadas válidas si el marcador se creó exitosamente
+      fullyValidatedCoordinates.push([lng, lat])
       
-      console.log('✅ Marcador creado exitosamente para:', location.userName, 'en', [lng, lat])
-    } catch (error) {
-      console.error('❌ Error creando marcador para:', location.userName, 'Error:', error)
-      console.error('❌ Coordenadas problemáticas:', [lng, lat])
+      console.log('✅ MARCADOR CREADO EXITOSAMENTE:', location.userName, 'Total coords validadas:', fullyValidatedCoordinates.length)
+    } catch (markerError) {
+      console.error('❌ ERROR FINAL CREANDO MARCADOR:', location.userName, markerError)
+      console.error('❌ Coordenadas que causaron error:', [lng, lat])
     }
   })
 
-  // AJUSTAR VISTA DEL MAPA - VERSIÓN CORREGIDA
-  if (validCoordinates.length > 0) {
+  console.log('📊 RESUMEN: Marcadores creados exitosamente:', markers.value.size, 'de', relevantLocations.value.length)
+  console.log('📍 Coordenadas completamente validadas:', fullyValidatedCoordinates.length)
+
+  // AJUSTAR VISTA DEL MAPA - VERSIÓN ULTRA DEFENSIVA
+  if (fullyValidatedCoordinates.length > 0) {
     try {
-      console.log('🗺️ Ajustando vista del mapa para', validCoordinates.length, 'ubicaciones válidas')
-      console.log('📊 Coordenadas válidas:', validCoordinates)
+      console.log('🗺️ Ajustando vista del mapa para', fullyValidatedCoordinates.length, 'ubicaciones COMPLETAMENTE validadas')
       
+      // VERIFICACIÓN ADICIONAL: Confirmar que todas las coordenadas son números válidos
+      const superValidatedCoords = fullyValidatedCoordinates.filter(([lng, lat]) => {
+        const isValid = typeof lng === 'number' && typeof lat === 'number' && 
+                       !isNaN(lng) && !isNaN(lat) && 
+                       isFinite(lng) && isFinite(lat) && 
+                       Math.abs(lat) <= 90 && Math.abs(lng) <= 180
+        
+        if (!isValid) {
+          console.warn('🚨 COORDENADA ULTRA-FILTRADA:', [lng, lat])
+        }
+        return isValid
+      })
+
+      console.log('🔍 Coordenadas ULTRA-validadas:', superValidatedCoords.length, 'de', fullyValidatedCoordinates.length)
+
+      if (superValidatedCoords.length === 0) {
+        console.error('❌ NO HAY COORDENADAS ULTRA-VÁLIDAS para fitBounds')
+        return
+      }
+
       const bounds = new (window as any).mapboxgl.LngLatBounds()
       
-      // Verificar cada coordenada antes de agregarla al bounds
-      validCoordinates.forEach((coord, index) => {
-        const [lng, lat] = coord
-        
-        // VALIDACIÓN FINAL antes de extend
-        if (isValidCoordinate(lat, lng)) {
-          console.log(`📍 Agregando coordenada ${index + 1}:`, [lng, lat])
+      // Agregar cada coordenada verificando que LngLatBounds pueda manejarla
+      superValidatedCoords.forEach(([lng, lat], index) => {
+        try {
+          console.log(`📍 Agregando coordenada ultra-validada ${index + 1}:`, [lng, lat])
           bounds.extend([lng, lat])
-        } else {
-          console.warn(`⚠️ Coordenada ${index + 1} inválida detectada:`, [lng, lat])
+        } catch (extendError) {
+          console.error(`❌ Error extendiendo bounds con coordenada ${index + 1}:`, [lng, lat], extendError)
         }
       })
       
       // Verificar que el bounds no esté vacío antes de aplicar fitBounds
       if (!bounds.isEmpty()) {
+        console.log('✅ Aplicando fitBounds con bounds válido')
         map.value.fitBounds(bounds, {
           padding: 50,
           maxZoom: 16
         })
         console.log('✅ Vista del mapa ajustada exitosamente')
       } else {
-        console.warn('⚠️ Bounds vacío, no se puede ajustar la vista del mapa')
-      }
-    } catch (error) {
-      console.error('❌ Error ajustando vista del mapa:', error)
-      // Si hay error con fitBounds, intentar centrar en la primera coordenada válida
-      if (validCoordinates.length > 0) {
-        try {
-          const [lng, lat] = validCoordinates[0]
-          console.log('🔄 Intentando centrar en la primera coordenada:', [lng, lat])
+        console.warn('⚠️ Bounds vacío después de extends')
+        // Fallback: centrar en primera coordenada
+        if (superValidatedCoords.length > 0) {
+          const [lng, lat] = superValidatedCoords[0]
+          console.log('🔄 Fallback: centrando en primera coordenada:', [lng, lat])
           map.value.setCenter([lng, lat])
           map.value.setZoom(14)
-        } catch (centerError) {
-          console.error('❌ Error centrando el mapa:', centerError)
+        }
+      }
+    } catch (boundsError) {
+      console.error('❌ Error general con bounds:', boundsError)
+      // Fallback final: centrar en la primera coordenada sin fitBounds
+      if (fullyValidatedCoordinates.length > 0) {
+        try {
+          const [lng, lat] = fullyValidatedCoordinates[0]
+          console.log('🆘 Fallback final: centrando en:', [lng, lat])
+          map.value.setCenter([lng, lat])
+          map.value.setZoom(14)
+          console.log('✅ Fallback exitoso')
+        } catch (fallbackError) {
+          console.error('💥 Error en fallback final:', fallbackError)
         }
       }
     }
   } else {
-    console.warn('⚠️ No hay coordenadas válidas para ajustar la vista del mapa')
+    console.warn('⚠️ No hay coordenadas completamente validadas para ajustar la vista del mapa')
   }
 }
 
@@ -754,11 +831,35 @@ const refreshGroupLocations = () => {
       console.log('🔄 Creando nueva suscripción')
       unsubscribeGroupLocations = subscribeToGroupLocations(props.selectedGroup!.id, (locations) => {
         console.log('📡 Ubicaciones actualizadas:', locations.length)
-        // VALIDAR UBICACIONES RECIBIDAS
-        const validLocations = locations.filter(loc => 
-          loc && isValidCoordinate(loc.lat, loc.lng)
-        )
-        console.log('📍 Ubicaciones válidas filtradas:', validLocations.length)
+        
+        // FILTRADO MEJORADO de ubicaciones válidas
+        const validLocations = locations.filter(loc => {
+          if (!loc) {
+            console.warn('⚠️ Ubicación nula filtrada')
+            return false
+          }
+          
+          const lat = sanitizeCoordinate(loc.lat)
+          const lng = sanitizeCoordinate(loc.lng)
+          
+          if (lat === null || lng === null) {
+            console.warn('⚠️ Ubicación con coordenadas no sanitizables filtrada:', loc.userName, loc.lat, loc.lng)
+            return false
+          }
+          
+          if (!isValidCoordinate(lat, lng)) {
+            console.warn('⚠️ Ubicación inválida filtrada:', loc.userName, lat, lng)
+            return false
+          }
+          
+          // Actualizar ubicación con coordenadas sanitizadas
+          loc.lat = lat
+          loc.lng = lng
+          
+          return true
+        })
+        
+        console.log('📍 Ubicaciones válidas después de filtrado:', validLocations.length)
         groupLocations.value = validLocations
       })
     }, 1000)
@@ -775,16 +876,29 @@ onMounted(async () => {
 
   console.log('🚀 Iniciando suscripciones para usuario:', userStore.user.uid)
 
-  // Suscribirse a mi ubicación CON VALIDACIÓN
+  // Suscribirse a mi ubicación CON VALIDACIÓN MEJORADA
   unsubscribeMyLocation = subscribeToMyLocation(userStore.user.uid, (location) => {
     console.log('📍 Mi ubicación recibida:', location)
     
-    // VALIDAR MI UBICACIÓN ANTES DE ASIGNAR
-    if (location && isValidCoordinate(location.lat, location.lng)) {
-      console.log('✅ Mi ubicación es válida:', location.lat, location.lng)
-      myLocation.value = location
+    if (!location) {
+      console.log('❌ Mi ubicación es null')
+      myLocation.value = null
+      return
+    }
+    
+    // SANITIZAR MI UBICACIÓN
+    const lat = sanitizeCoordinate(location.lat)
+    const lng = sanitizeCoordinate(location.lng)
+    
+    if (lat !== null && lng !== null && isValidCoordinate(lat, lng)) {
+      console.log('✅ Mi ubicación es válida:', lat, lng)
+      myLocation.value = {
+        ...location,
+        lat,
+        lng
+      }
     } else {
-      console.warn('⚠️ Mi ubicación recibida tiene coordenadas inválidas:', location)
+      console.warn('⚠️ Mi ubicación recibida tiene coordenadas inválidas:', location.lat, location.lng)
       myLocation.value = null
     }
   })
@@ -816,17 +930,31 @@ watch(() => props.selectedGroup, (newGroup, oldGroup) => {
       unsubscribeGroupLocations = subscribeToGroupLocations(newGroup.id, (locations) => {
         console.log('📍 Ubicaciones del grupo recibidas:', locations.length)
         
-        // VALIDAR UBICACIONES DEL GRUPO ANTES DE ASIGNAR
+        // FILTRADO MEJORADO para el watch del grupo
         const validLocations = locations.filter(loc => {
           if (!loc) return false
-          if (!isValidCoordinate(loc.lat, loc.lng)) {
-            console.warn('⚠️ Ubicación inválida filtrada:', loc.userName, loc.lat, loc.lng)
+          
+          const lat = sanitizeCoordinate(loc.lat)
+          const lng = sanitizeCoordinate(loc.lng)
+          
+          if (lat === null || lng === null) {
+            console.warn('⚠️ Watch: Ubicación con coordenadas no sanitizables:', loc.userName, loc.lat, loc.lng)
             return false
           }
+          
+          if (!isValidCoordinate(lat, lng)) {
+            console.warn('⚠️ Watch: Ubicación inválida filtrada:', loc.userName, lat, lng)
+            return false
+          }
+          
+          // Actualizar con coordenadas sanitizadas
+          loc.lat = lat
+          loc.lng = lng
+          
           return true
         })
         
-        console.log('📊 Ubicaciones válidas del grupo:', validLocations.length)
+        console.log('📊 Watch: Ubicaciones válidas del grupo:', validLocations.length)
         groupLocations.value = validLocations
       })
     }, 500)
@@ -835,14 +963,17 @@ watch(() => props.selectedGroup, (newGroup, oldGroup) => {
 
 watch(() => relevantLocations.value, (newLocations, oldLocations) => {
   console.log('🗺️ Ubicaciones relevantes cambiaron:', newLocations.length)
-  console.log('📊 Detalles:', newLocations.map(l => ({ 
+  console.log('📊 Detalles con validación:', newLocations.map(l => ({ 
     name: l.userName, 
     online: l.isOnline, 
     coords: `${l.lat},${l.lng}`,
-    valid: isValidCoordinate(l.lat, l.lng)
+    valid: isValidCoordinate(l.lat, l.lng),
+    sanitizedLat: sanitizeCoordinate(l.lat),
+    sanitizedLng: sanitizeCoordinate(l.lng)
   })))
   updateMarkers()
 }, { deep: true })
+
 </script>
 
 <template>
