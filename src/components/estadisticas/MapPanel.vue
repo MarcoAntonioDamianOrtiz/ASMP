@@ -339,17 +339,8 @@ const updateMarkers = () => {
 
   // Agregar marcadores de ubicaciones relevantes
   relevantLocations.value.forEach(location => {
-    // ✅ VALIDACIÓN CRÍTICA DE COORDENADAS
-    if (!location.lat || !location.lng || 
-        isNaN(location.lat) || isNaN(location.lng) ||
-        Math.abs(location.lat) > 90 || Math.abs(location.lng) > 180) {
-      console.warn('⚠️ Ubicación con coordenadas inválidas:', {
-        user: location.userName,
-        lat: location.lat,
-        lng: location.lng,
-        isNaN_lat: isNaN(location.lat),
-        isNaN_lng: isNaN(location.lng)
-      })
+    if (!location.lat || !location.lng) {
+      console.warn('⚠️ Ubicación sin coordenadas:', location)
       return
     }
 
@@ -359,7 +350,7 @@ const updateMarkers = () => {
       return
     }
 
-    console.log('📍 Creando marcador para:', location.userName, 'Coords:', location.lat, location.lng, 'Online:', location.isOnline)
+    console.log('📍 Creando marcador para:', location.userName, 'Online:', location.isOnline)
 
     const color = isMyLocation ? '#ef4444' : getUserColor(location.userName)
       
@@ -436,16 +427,9 @@ const updateMarkers = () => {
     `)
 
     try {
-      // ✅ VALIDACIÓN ADICIONAL ANTES DE CREAR EL MARCADOR
-      const coords = [location.lng, location.lat]
-      if (coords.some(coord => isNaN(coord))) {
-        console.error('❌ Coordenadas NaN detectadas justo antes de crear marcador:', coords)
-        return
-      }
-
       // Crear y agregar marcador
       const marker = new (window as any).mapboxgl.Marker(el)
-        .setLngLat(coords)
+        .setLngLat([location.lng, location.lat])
         .setPopup(popup)
         .addTo(map.value)
 
@@ -456,37 +440,25 @@ const updateMarkers = () => {
 
       markers.value.set(location.userId, marker)
       
-      console.log('✅ Marcador creado exitosamente para:', location.userName, 'en coords:', coords)
+      console.log('✅ Marcador creado exitosamente para:', location.userName)
     } catch (error) {
-      console.error('❌ Error creando marcador para', location.userName, ':', error)
-      console.error('❌ Coordenadas que causaron el error:', [location.lng, location.lat])
+      console.error('❌ Error creando marcador:', error)
     }
   })
 
   // Ajustar vista del mapa para mostrar todos los marcadores
   if (relevantLocations.value.length > 0) {
-    try {
-      const bounds = new (window as any).mapboxgl.LngLatBounds()
-      let validLocations = 0
-      
-      relevantLocations.value.forEach(location => {
-        if (location.lat && location.lng && 
-            !isNaN(location.lat) && !isNaN(location.lng) &&
-            Math.abs(location.lat) <= 90 && Math.abs(location.lng) <= 180) {
-          bounds.extend([location.lng, location.lat])
-          validLocations++
-        }
-      })
-      
-      if (validLocations > 0 && !bounds.isEmpty()) {
-        map.value.fitBounds(bounds, {
-          padding: 50,
-          maxZoom: 16
-        })
-        console.log('✅ Vista del mapa ajustada para', validLocations, 'ubicaciones')
+    const bounds = new (window as any).mapboxgl.LngLatBounds()
+    relevantLocations.value.forEach(location => {
+      if (location.lat && location.lng) {
+        bounds.extend([location.lng, location.lat])
       }
-    } catch (error) {
-      console.error('❌ Error ajustando vista del mapa:', error)
+    })
+    if (!bounds.isEmpty()) {
+      map.value.fitBounds(bounds, {
+        padding: 50,
+        maxZoom: 16
+      })
     }
   }
 }
@@ -599,6 +571,7 @@ const getMemberName = (memberEmail: string) => {
   return memberEmail.split('@')[0]
 }
 
+// Función mejorada para formatear tiempo con mejor UI
 const formatTime = (timestamp: any) => {
   if (!timestamp) return 'Nunca'
   
@@ -608,9 +581,32 @@ const formatTime = (timestamp: any) => {
   const diffMinutes = Math.floor(diffMs / (1000 * 60))
   
   if (diffMinutes < 1) return 'Ahora mismo'
-  if (diffMinutes < 60) return `Hace ${diffMinutes} min`
-  if (diffMinutes < 1440) return `Hace ${Math.floor(diffMinutes / 60)} h`
-  return date.toLocaleDateString()
+  if (diffMinutes < 60) return `${diffMinutes}min`
+  if (diffMinutes < 1440) return `${Math.floor(diffMinutes / 60)}h`
+  return date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })
+}
+
+// Función mejorada para obtener nombre truncado
+const getTruncatedName = (email: string, maxLength: number = 10): string => {
+  const memberLocation = groupLocations.value.find(loc => loc.userEmail === email)
+  let name = memberLocation ? memberLocation.userName : email.split('@')[0]
+  
+  if (name.length > maxLength) {
+    return name.substring(0, maxLength) + '...'
+  }
+  return name
+}
+
+// Función para obtener iniciales
+const getInitials = (email: string): string => {
+  const memberLocation = groupLocations.value.find(loc => loc.userEmail === email)
+  const name = memberLocation ? memberLocation.userName : email.split('@')[0]
+  
+  const words = name.split(' ')
+  if (words.length >= 2) {
+    return words[0].charAt(0).toUpperCase() + words[1].charAt(0).toUpperCase()
+  }
+  return name.charAt(0).toUpperCase()
 }
 
 const toggleMemberCircle = async (memberEmail: string) => {
@@ -626,10 +622,9 @@ const toggleMemberCircle = async (memberEmail: string) => {
       await activateMemberCircle(memberEmail)
     }
     
-    // Esperar un poco más para que se actualice la base de datos
     setTimeout(() => {
       refreshGroupLocations()
-    }, 2000)
+    }, 1500)
     
   } catch (error) {
     console.error('❌ Error toggling circle:', error)
@@ -637,7 +632,7 @@ const toggleMemberCircle = async (memberEmail: string) => {
   } finally {
     setTimeout(() => {
       circleActionLoading.value = null
-    }, 3000)
+    }, 2000)
   }
 }
 
@@ -645,7 +640,6 @@ const refreshGroupLocations = () => {
   if (props.selectedGroup) {
     console.log('🔄 Refrescando ubicaciones manualmente para grupo:', props.selectedGroup.name)
     
-    // Limpiar ubicaciones actuales
     groupLocations.value = []
     
     if (unsubscribeGroupLocations) {
@@ -658,24 +652,9 @@ const refreshGroupLocations = () => {
       console.log('🔄 Creando nueva suscripción')
       unsubscribeGroupLocations = subscribeToGroupLocations(props.selectedGroup!.id, (locations) => {
         console.log('📡 Ubicaciones actualizadas:', locations.length)
-        // ✅ FILTRAR UBICACIONES CON COORDENADAS VÁLIDAS
-        const validLocations = locations.filter(location => {
-          const isValid = location.lat && location.lng && 
-                          !isNaN(location.lat) && !isNaN(location.lng) &&
-                          Math.abs(location.lat) <= 90 && Math.abs(location.lng) <= 180
-          if (!isValid) {
-            console.warn('⚠️ Ubicación filtrada por coordenadas inválidas:', {
-              user: location.userName,
-              lat: location.lat,
-              lng: location.lng
-            })
-          }
-          return isValid
-        })
-        console.log('✅ Ubicaciones válidas después del filtro:', validLocations.length)
-        groupLocations.value = validLocations
+        groupLocations.value = locations
       })
-    }, 1500)
+    }, 1000)
   }
 }
 
@@ -692,16 +671,7 @@ onMounted(async () => {
   // Suscribirse a mi ubicación
   unsubscribeMyLocation = subscribeToMyLocation(userStore.user.uid, (location) => {
     console.log('📍 Mi ubicación actualizada:', location)
-    // ✅ VALIDAR MI UBICACIÓN TAMBIÉN
-    if (location && location.lat && location.lng && 
-        !isNaN(location.lat) && !isNaN(location.lng) &&
-        Math.abs(location.lat) <= 90 && Math.abs(location.lng) <= 180) {
-      myLocation.value = location
-      console.log('✅ Mi ubicación válida establecida')
-    } else {
-      console.warn('⚠️ Mi ubicación tiene coordenadas inválidas:', location)
-      myLocation.value = null
-    }
+    myLocation.value = location
   })
 })
 
@@ -730,22 +700,7 @@ watch(() => props.selectedGroup, (newGroup, oldGroup) => {
     setTimeout(() => {
       unsubscribeGroupLocations = subscribeToGroupLocations(newGroup.id, (locations) => {
         console.log('📍 Ubicaciones del grupo recibidas:', locations.length)
-        // ✅ FILTRAR UBICACIONES CON COORDENADAS VÁLIDAS
-        const validLocations = locations.filter(location => {
-          const isValid = location.lat && location.lng && 
-                          !isNaN(location.lat) && !isNaN(location.lng) &&
-                          Math.abs(location.lat) <= 90 && Math.abs(location.lng) <= 180
-          if (!isValid) {
-            console.warn('⚠️ Ubicación filtrada por coordenadas inválidas:', {
-              user: location.userName,
-              lat: location.lat,
-              lng: location.lng
-            })
-          }
-          return isValid
-        })
-        console.log('✅ Ubicaciones válidas después del filtro:', validLocations.length)
-        groupLocations.value = validLocations
+        groupLocations.value = locations
       })
     }, 500)
   }
@@ -753,188 +708,229 @@ watch(() => props.selectedGroup, (newGroup, oldGroup) => {
 
 watch(() => relevantLocations.value, (newLocations, oldLocations) => {
   console.log('🗺️ Ubicaciones relevantes cambiaron:', newLocations.length)
-  console.log('📊 Detalles:', newLocations.map(l => ({ 
-    name: l.userName, 
-    online: l.isOnline, 
-    lat: l.lat, 
-    lng: l.lng,
-    validCoords: !isNaN(l.lat) && !isNaN(l.lng)
-  })))
+  console.log('📊 Detalles:', newLocations.map(l => ({ name: l.userName, online: l.isOnline })))
   updateMarkers()
 }, { deep: true })
 </script>
 
 <template>
   <div class="flex h-screen bg-gray-100">
-    <!-- Panel izquierdo -->
+    <!-- Panel izquierdo MEJORADO -->
     <div class="w-80 bg-white shadow-lg flex flex-col">
       <!-- Header -->
-      <div class="p-4 border-b border-gray-200">
+      <div class="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
         <h2 class="text-lg font-semibold text-gray-800 flex items-center">
           📍 Ubicaciones en tiempo real
         </h2>
+        <p class="text-xs text-gray-600 mt-1">Monitoreo de familia y grupos</p>
       </div>
 
-      <!-- Información del grupo -->
-      <div class="p-4 border-b border-gray-200">
-        <div class="flex flex-wrap items-center gap-2 mb-4">
+      <!-- Información del grupo seleccionado -->
+      <div class="p-4 border-b border-gray-200 bg-gray-50">
+        <div class="flex flex-wrap items-center gap-2 mb-3">
           <button
             v-for="group in userGroups"
             :key="group.id"
             :class="[
-              'px-3 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center gap-1',
+              'px-3 py-1.5 rounded-full text-xs font-medium transition-colors flex items-center gap-1 max-w-[120px]',
               selectedGroup && selectedGroup.id === group.id 
-                ? 'bg-green-500 text-white' 
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                ? 'bg-blue-500 text-white shadow-sm' 
+                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
             ]"
           >
-            {{ group.name }}
+            <span class="truncate">{{ group.name }}</span>
             <button
               v-if="group.createdBy === userStore.user?.email"
               @click.stop="confirmDeleteGroup(group)"
-              class="ml-1 text-red-500 hover:text-red-700 text-xs"
+              class="ml-1 text-red-400 hover:text-red-600 text-xs flex-shrink-0"
               title="Eliminar grupo"
             >
               ✕
             </button>
           </button>
         </div>
+        
+        <!-- Estadísticas rápidas -->
+        <div v-if="selectedGroup" class="grid grid-cols-3 gap-2 text-xs">
+          <div class="bg-white p-2 rounded-lg text-center border">
+            <div class="font-semibold text-blue-600">{{ selectedGroup.members.length }}</div>
+            <div class="text-gray-500">Miembros</div>
+          </div>
+          <div class="bg-white p-2 rounded-lg text-center border">
+            <div class="font-semibold text-green-600">{{ groupLocations.filter(l => l.isOnline).length }}</div>
+            <div class="text-gray-500">En línea</div>
+          </div>
+          <div class="bg-white p-2 rounded-lg text-center border">
+            <div class="font-semibold text-orange-600">{{ groupLocations.filter(l => !l.isOnline).length }}</div>
+            <div class="text-gray-500">Offline</div>
+          </div>
+        </div>
       </div>
       
-      <!-- Lista de miembros -->
-      <div class="p-4 flex-1 overflow-y-auto">
-        <h4 class="font-semibold text-gray-800 mb-3 flex items-center justify-between">
-          <span>{{ selectedGroup ? `Miembros de ${selectedGroup.name}` : 'Mi ubicación' }}</span>
-          <button 
-            v-if="selectedGroup"
-            @click="refreshGroupLocations"
-            class="text-blue-500 hover:text-blue-700 text-sm"
-            title="Refrescar ubicaciones"
-          >
-            🔄
-          </button>
-        </h4>
-        
-        <!-- Mi ubicación -->
-        <div v-if="myLocation" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-          <div class="flex items-center justify-between">
+      <!-- Lista de miembros COMPLETAMENTE REDISEÑADA -->
+      <div class="flex-1 flex flex-col" style="min-height: 0;">
+        <div class="px-4 py-2 flex-shrink-0">
+          <h4 class="font-semibold text-gray-800 mb-2 flex items-center justify-between">
+            <span class="text-sm">{{ selectedGroup ? `Miembros de ${selectedGroup.name}` : 'Mi ubicación' }}</span>
+            <button 
+              v-if="selectedGroup"
+              @click="refreshGroupLocations"
+              class="text-blue-500 hover:text-blue-700 text-xs p-1 rounded hover:bg-blue-50"
+              title="Refrescar ubicaciones"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+              </svg>
+            </button>
+          </h4>
+        </div>
+
+        <!-- Mi ubicación - siempre arriba -->
+        <div v-if="myLocation" class="px-4 mb-3 flex-shrink-0">
+          <div class="bg-gradient-to-r from-red-50 to-pink-50 border border-red-200 rounded-lg p-3">
             <div class="flex items-center">
-              <div class="w-3 h-3 bg-red-500 rounded-full mr-3 animate-pulse"></div>
-              <div>
-                <p class="font-medium text-red-800">📍 Mi Ubicación</p>
-                <p class="text-sm text-red-600">{{ myLocation.userEmail }}</p>
-                <p class="text-xs text-red-500 mt-1">
-                  <span class="inline-block w-2 h-2 rounded-full mr-1 bg-green-500"></span>
-                  En línea
-                </p>
-                <p class="text-xs text-red-400 mt-1">
-                  📍 {{ myLocation.lat.toFixed(6) }}, {{ myLocation.lng.toFixed(6) }}
+              <div class="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center text-white font-bold text-sm mr-3 shadow-sm flex-shrink-0">
+                <span>📍</span>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                  <h5 class="font-medium text-red-800 text-sm">Mi Ubicación</h5>
+                  <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                </div>
+                <p class="text-xs text-red-600 truncate">{{ myLocation.userEmail }}</p>
+                <p class="text-xs text-red-500 mt-1 flex items-center">
+                  <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  </svg>
+                  {{ formatTime(myLocation.timestamp) }}
                 </p>
               </div>
-            </div>
-            <div class="text-xs text-red-400">
-              {{ formatTime(myLocation.timestamp) }}
             </div>
           </div>
         </div>
 
-        <!-- Miembros del grupo -->
-        <div v-if="selectedGroup" class="space-y-3">
-          <div 
-            v-for="memberEmail in selectedGroup.members.filter(email => email !== userStore.user?.email)" 
-            :key="memberEmail"
-            class="p-3 border rounded-lg transition-all duration-300"
-            :class="getMemberLocationStatus(memberEmail).isOnline ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'"
-          >
-            <div class="flex items-center justify-between mb-2">
-              <div class="flex items-center">
-                <div 
-                  class="w-3 h-3 rounded-full mr-3 transition-all duration-300" 
-                  :class="getMemberLocationStatus(memberEmail).isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-400'"
-                ></div>
-                <div>
-                  <p class="font-medium text-gray-800">{{ getMemberName(memberEmail) }}</p>
-                  <p class="text-sm text-gray-600">{{ memberEmail }}</p>
+        <!-- Lista scrolleable de miembros del grupo CON ALTURA FIJA Y PADDING EXTRA -->
+        <div class="flex-1 overflow-y-auto px-4" style="max-height: calc(100vh - 280px); min-height: 280px;">
+          <div v-if="selectedGroup" class="space-y-2 pb-16">
+            <div 
+              v-for="memberEmail in selectedGroup.members.filter(email => email !== userStore.user?.email)" 
+              :key="memberEmail"
+              class="rounded-lg transition-all duration-200 border"
+              :class="getMemberLocationStatus(memberEmail).isOnline ? 
+                'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 hover:shadow-sm' : 
+                'bg-gray-50 border-gray-200 hover:bg-gray-100'"
+            >
+              <!-- Header del miembro -->
+              <div class="p-3">
+                <div class="flex items-center">
+                  <!-- Avatar con iniciales -->
+                  <div 
+                    class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm mr-3 shadow-sm flex-shrink-0" 
+                    :class="getMemberLocationStatus(memberEmail).isOnline ? 'bg-green-500' : 'bg-gray-400'"
+                  >
+                    {{ getInitials(memberEmail) }}
+                  </div>
+                  
+                  <!-- Información del miembro -->
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1">
+                      <h5 class="font-medium text-gray-800 text-sm truncate" :title="getMemberName(memberEmail)">
+                        {{ getTruncatedName(memberEmail, 12) }}
+                      </h5>
+                      <div 
+                        class="w-2 h-2 rounded-full flex-shrink-0" 
+                        :class="getMemberLocationStatus(memberEmail).isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-400'"
+                      ></div>
+                    </div>
+                    <p class="text-xs text-gray-500 truncate" :title="memberEmail">{{ memberEmail.split('@')[0] }}@...</p>
+                    
+                    <!-- Estado y última actividad -->
+                    <div class="flex items-center justify-between mt-2">
+                      <div class="flex items-center text-xs">
+                        <svg class="w-3 h-3 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <span :class="getMemberLocationStatus(memberEmail).isOnline ? 'text-green-600' : 'text-gray-500'">
+                          {{ formatTime(getMemberLocationStatus(memberEmail).lastUpdate) }}
+                        </span>
+                      </div>
+                      
+                      <!-- Botón de acción compacto -->
+                      <button
+                        @click="toggleMemberCircle(memberEmail)"
+                        :disabled="circleActionLoading === memberEmail"
+                        :class="[
+                          'px-2 py-1 text-xs rounded-md font-medium transition-all duration-200 min-w-[60px] flex items-center justify-center',
+                          circleActionLoading === memberEmail 
+                            ? 'bg-gray-400 text-white cursor-not-allowed' 
+                            : getMemberLocationStatus(memberEmail).isOnline 
+                            ? 'bg-red-500 hover:bg-red-600 text-white shadow-sm hover:shadow' 
+                            : 'bg-green-500 hover:bg-green-600 text-white shadow-sm hover:shadow'
+                        ]"
+                      >
+                        <span v-if="circleActionLoading === memberEmail" class="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></span>
+                        <span v-else class="text-xs">
+                          {{ getMemberLocationStatus(memberEmail).isOnline ? '🚫' : '🎯' }}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
               
-              <div class="flex items-center gap-2">
-                <div class="text-xs text-gray-500">
-                  {{ getMemberLocationStatus(memberEmail).isOnline ? 'Activo' : 'Inactivo' }}
+              <!-- Información de ubicación expandible -->
+              <div v-if="getMemberLocationStatus(memberEmail).hasLocation" 
+                   class="px-3 pb-3 border-t border-white border-opacity-50">
+                <div class="bg-white rounded-md p-2 mt-2 text-xs space-y-1">
+                  <div class="flex items-center justify-between">
+                    <span class="text-gray-600">Estado:</span>
+                    <span :class="getMemberLocationStatus(memberEmail).isOnline ? 'text-green-600 font-medium' : 'text-gray-500'">
+                      {{ getMemberLocationStatus(memberEmail).isOnline ? 'En línea' : 'Desconectado' }}
+                    </span>
+                  </div>
+                  <div v-if="getMemberLocationDetails(memberEmail)" class="flex items-center justify-between">
+                    <span class="text-gray-600">Ubicación:</span>
+                    <span class="text-gray-800 font-mono text-xs">
+                      {{ getMemberLocationDetails(memberEmail)?.lat.toFixed(3) }},{{ getMemberLocationDetails(memberEmail)?.lng.toFixed(3) }}
+                    </span>
+                  </div>
+                  <div v-if="getMemberLocationDetails(memberEmail)?.accuracy" class="flex items-center justify-between">
+                    <span class="text-gray-600">Precisión:</span>
+                    <span class="text-gray-600">{{ Math.round(getMemberLocationDetails(memberEmail)?.accuracy || 0) }}m</span>
+                  </div>
                 </div>
-                <button
-                  @click="toggleMemberCircle(memberEmail)"
-                  :disabled="circleActionLoading === memberEmail"
-                  :class="[
-                    'px-3 py-1 text-xs rounded-md font-medium transition-all duration-300 min-w-[80px]',
-                    circleActionLoading === memberEmail 
-                      ? 'bg-gray-400 text-white cursor-not-allowed' 
-                      : getMemberLocationStatus(memberEmail).isOnline 
-                      ? 'bg-red-500 hover:bg-red-600 text-white shadow-sm' 
-                      : 'bg-green-500 hover:bg-green-600 text-white shadow-sm'
-                  ]"
-                >
-                  {{ circleActionLoading === memberEmail ? '⏳' : 
-                    (getMemberLocationStatus(memberEmail).isOnline ? '🚫 Desactivar' : '🎯 Activar') }}
-                </button>
               </div>
-            </div>
-            
-            <!-- Información de ubicación -->
-            <div v-if="getMemberLocationStatus(memberEmail).hasLocation" class="text-xs text-gray-500 space-y-1 bg-white rounded p-2">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center">
-                  <span class="w-2 h-2 rounded-full mr-2" 
-                        :class="getMemberLocationStatus(memberEmail).isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-400'"></span>
-                  {{ getMemberLocationStatus(memberEmail).isOnline ? '🟢 En línea' : '⚫ Desconectado' }}
+              
+              <!-- Estado sin ubicación -->
+              <div v-else class="px-3 pb-3">
+                <div class="bg-yellow-50 border border-yellow-200 rounded-md p-2 mt-2 text-center">
+                  <span class="text-xs text-yellow-700">📍 Sin ubicación disponible</span>
                 </div>
-                <span class="text-xs font-mono">
-                  {{ getMemberLocationStatus(memberEmail).isOnline ? '🟢' : '⚫' }}
-                </span>
               </div>
-              <div class="flex items-center">
-                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                </svg>
-                {{ formatTime(getMemberLocationStatus(memberEmail).lastUpdate) }}
-              </div>
-              <div v-if="getMemberLocationDetails(memberEmail)" class="flex items-center">
-                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
-                </svg>
-                {{ getMemberLocationDetails(memberEmail)?.lat.toFixed(4) }}, 
-                {{ getMemberLocationDetails(memberEmail)?.lng.toFixed(4) }}
-              </div>
-              <div v-if="getMemberLocationDetails(memberEmail)?.accuracy" class="flex items-center">
-                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                </svg>
-                Precisión: {{ Math.round(getMemberLocationDetails(memberEmail)?.accuracy || 0) }}m
-              </div>
-            </div>
-            
-            <!-- Estado sin ubicación -->
-            <div v-else class="text-xs text-gray-400 bg-gray-100 rounded p-2 text-center">
-              📍 Sin ubicación disponible
             </div>
           </div>
-        </div>
 
-        <!-- Sin miembros -->
-        <div v-if="selectedGroup && selectedGroup.members.length <= 1" class="text-center py-8 text-gray-500">
-          <svg class="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
-          </svg>
-          <p class="text-sm">No hay otros miembros en el grupo</p>
-          <p class="text-xs">Invita miembros para ver sus ubicaciones</p>
-        </div>
+          <!-- Sin miembros -->
+          <div v-if="selectedGroup && selectedGroup.members.length <= 1" class="text-center py-8 text-gray-500">
+            <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 715.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+              </svg>
+            </div>
+            <p class="text-sm font-medium">No hay otros miembros</p>
+            <p class="text-xs mt-1">Invita a familiares o amigos</p>
+          </div>
 
-        <!-- Solo mi ubicación -->
-        <div v-if="!selectedGroup && !myLocation" class="text-center py-8 text-gray-500">
-          <svg class="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
-          </svg>
-          <p class="text-sm">Activa tu GPS para ver tu ubicación</p>
+          <!-- Solo mi ubicación -->
+          <div v-if="!selectedGroup && !myLocation" class="text-center py-8 text-gray-500">
+            <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+              </svg>
+            </div>
+            <p class="text-sm font-medium">Activa tu GPS</p>
+            <p class="text-xs mt-1">Para ver tu ubicación</p>
+          </div>
         </div>
       </div>
     </div>
@@ -1047,7 +1043,7 @@ watch(() => relevantLocations.value, (newLocations, oldLocations) => {
             </div>
             <div class="text-xs text-gray-500 flex justify-between">
               <span>Grupo activo:</span>
-              <span class="font-medium">{{ selectedGroup?.name || 'Ninguno' }}</span>
+              <span class="font-medium truncate max-w-[100px]">{{ selectedGroup?.name || 'Ninguno' }}</span>
             </div>
             <div class="text-xs text-gray-500 flex justify-between">
               <span>Miembros online:</span>
