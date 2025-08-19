@@ -43,13 +43,16 @@ const MAPBOX_TOKEN = 'pk.eyJ1IjoiYW50b255MjcwNCIsImEiOiJjbWQweGg4d2IxOGdnMmtwemp
 // FUNCIÓN MEJORADA para validar coordenadas
 const isValidCoordinate = (lat: any, lng: any): boolean => {
   if (!lat || !lng) return false
-  if (isNaN(Number(lat)) || isNaN(Number(lng))) return false
-  if (typeof lat !== 'number' && typeof lng !== 'number') {
-    const numLat = Number(lat)
-    const numLng = Number(lng)
-    if (isNaN(numLat) || isNaN(numLng)) return false
-  }
-  return Math.abs(Number(lat)) <= 90 && Math.abs(Number(lng)) <= 180
+  if (lat === null || lng === null || lat === undefined || lng === undefined) return false
+  
+  const numLat = Number(lat)
+  const numLng = Number(lng)
+  
+  if (isNaN(numLat) || isNaN(numLng)) return false
+  if (!isFinite(numLat) || !isFinite(numLng)) return false
+  if (numLat === 0 && numLng === 0) return false // Coordenadas por defecto inválidas
+  
+  return Math.abs(numLat) <= 90 && Math.abs(numLng) <= 180
 }
 
 // Función para generar colores consistentes para usuarios
@@ -337,7 +340,7 @@ const hideZonasRiesgo = () => {
   }
 }
 
-// FUNCIÓN MEJORADA para actualizar marcadores con validación de coordenadas
+// FUNCIÓN CORREGIDA para actualizar marcadores con validación ESTRICTA de coordenadas
 const updateMarkers = () => {
   if (!map.value) {
     console.log('🚫 Mapa no disponible para actualizar marcadores')
@@ -362,9 +365,12 @@ const updateMarkers = () => {
     return
   }
 
+  // Array para almacenar coordenadas válidas para el bounds
+  const validCoordinates: [number, number][] = []
+
   // Agregar marcadores de ubicaciones relevantes CON VALIDACIÓN ESTRICTA
   relevantLocations.value.forEach(location => {
-    // VALIDACIÓN MÚLTIPLE DE COORDENADAS
+    // VALIDACIÓN MÚLTIPLE DE COORDENADAS - MÁS ESTRICTA
     if (!location.lat || !location.lng) {
       console.warn('⚠️ Ubicación sin coordenadas:', location)
       return
@@ -373,13 +379,25 @@ const updateMarkers = () => {
     const lat = Number(location.lat)
     const lng = Number(location.lng)
 
+    // VALIDACIONES CRÍTICAS PARA EVITAR NaN
     if (isNaN(lat) || isNaN(lng)) {
-      console.warn('⚠️ Coordenadas NaN para:', location.userName, 'lat:', location.lat, 'lng:', location.lng)
+      console.warn('❌ Coordenadas NaN para:', location.userName, 'lat:', location.lat, 'lng:', location.lng)
+      return
+    }
+
+    if (!isFinite(lat) || !isFinite(lng)) {
+      console.warn('❌ Coordenadas no finitas para:', location.userName, 'lat:', lat, 'lng:', lng)
       return
     }
 
     if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
-      console.warn('⚠️ Coordenadas fuera de rango:', location.userName, 'lat:', lat, 'lng:', lng)
+      console.warn('❌ Coordenadas fuera de rango para:', location.userName, 'lat:', lat, 'lng:', lng)
+      return
+    }
+
+    // Verificar que no sean coordenadas por defecto (0,0)
+    if (lat === 0 && lng === 0) {
+      console.warn('❌ Coordenadas por defecto (0,0) para:', location.userName)
       return
     }
 
@@ -466,11 +484,17 @@ const updateMarkers = () => {
     `)
 
     try {
-      // Crear y agregar marcador CON VALIDACIÓN FINAL
+      // VALIDACIÓN FINAL ANTES DE CREAR EL MARCADOR
       console.log('🎯 Intentando crear marcador en coordenadas:', [lng, lat])
       
+      // Verificar una vez más que las coordenadas son válidas
+      if (!isValidCoordinate(lat, lng)) {
+        console.error('❌ Coordenadas inválidas detectadas en validación final:', lat, lng)
+        return
+      }
+      
       const marker = new (window as any).mapboxgl.Marker(el)
-        .setLngLat([lng, lat])  // Usar las coordenadas validadas
+        .setLngLat([lng, lat])
         .setPopup(popup)
         .addTo(map.value)
 
@@ -481,6 +505,9 @@ const updateMarkers = () => {
 
       markers.value.set(location.userId, marker)
       
+      // SOLO agregar a validCoordinates si el marcador se creó exitosamente
+      validCoordinates.push([lng, lat])
+      
       console.log('✅ Marcador creado exitosamente para:', location.userName, 'en', [lng, lat])
     } catch (error) {
       console.error('❌ Error creando marcador para:', location.userName, 'Error:', error)
@@ -488,34 +515,53 @@ const updateMarkers = () => {
     }
   })
 
-  // Ajustar vista del mapa para mostrar todos los marcadores
-  if (relevantLocations.value.length > 0) {
+  // AJUSTAR VISTA DEL MAPA - VERSIÓN CORREGIDA
+  if (validCoordinates.length > 0) {
     try {
-      const bounds = new (window as any).mapboxgl.LngLatBounds()
-      let validLocationsCount = 0
+      console.log('🗺️ Ajustando vista del mapa para', validCoordinates.length, 'ubicaciones válidas')
+      console.log('📊 Coordenadas válidas:', validCoordinates)
       
-      relevantLocations.value.forEach(location => {
-        const lat = Number(location.lat)
-        const lng = Number(location.lng)
+      const bounds = new (window as any).mapboxgl.LngLatBounds()
+      
+      // Verificar cada coordenada antes de agregarla al bounds
+      validCoordinates.forEach((coord, index) => {
+        const [lng, lat] = coord
         
-        if (!isNaN(lat) && !isNaN(lng)) {
+        // VALIDACIÓN FINAL antes de extend
+        if (isValidCoordinate(lat, lng)) {
+          console.log(`📍 Agregando coordenada ${index + 1}:`, [lng, lat])
           bounds.extend([lng, lat])
-          validLocationsCount++
+        } else {
+          console.warn(`⚠️ Coordenada ${index + 1} inválida detectada:`, [lng, lat])
         }
       })
       
-      if (validLocationsCount > 0 && !bounds.isEmpty()) {
-        console.log('🗺️ Ajustando vista del mapa para', validLocationsCount, 'ubicaciones')
+      // Verificar que el bounds no esté vacío antes de aplicar fitBounds
+      if (!bounds.isEmpty()) {
         map.value.fitBounds(bounds, {
           padding: 50,
           maxZoom: 16
         })
+        console.log('✅ Vista del mapa ajustada exitosamente')
       } else {
-        console.warn('⚠️ No se pudo ajustar la vista: bounds vacío o sin ubicaciones válidas')
+        console.warn('⚠️ Bounds vacío, no se puede ajustar la vista del mapa')
       }
     } catch (error) {
       console.error('❌ Error ajustando vista del mapa:', error)
+      // Si hay error con fitBounds, intentar centrar en la primera coordenada válida
+      if (validCoordinates.length > 0) {
+        try {
+          const [lng, lat] = validCoordinates[0]
+          console.log('🔄 Intentando centrar en la primera coordenada:', [lng, lat])
+          map.value.setCenter([lng, lat])
+          map.value.setZoom(14)
+        } catch (centerError) {
+          console.error('❌ Error centrando el mapa:', centerError)
+        }
+      }
     }
+  } else {
+    console.warn('⚠️ No hay coordenadas válidas para ajustar la vista del mapa')
   }
 }
 
