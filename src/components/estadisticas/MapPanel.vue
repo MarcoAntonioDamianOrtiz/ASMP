@@ -40,6 +40,18 @@ const currentPopup = ref<any>(null)
 // Tu token de Mapbox
 const MAPBOX_TOKEN = 'pk.eyJ1IjoiYW50b255MjcwNCIsImEiOiJjbWQweGg4d2IxOGdnMmtwemp3Nnp0YmIxIn0.-Hm3lVWw6U-NE10a0u2U2A'
 
+// FUNCIÓN MEJORADA para validar coordenadas
+const isValidCoordinate = (lat: any, lng: any): boolean => {
+  if (!lat || !lng) return false
+  if (isNaN(Number(lat)) || isNaN(Number(lng))) return false
+  if (typeof lat !== 'number' && typeof lng !== 'number') {
+    const numLat = Number(lat)
+    const numLng = Number(lng)
+    if (isNaN(numLat) || isNaN(numLng)) return false
+  }
+  return Math.abs(Number(lat)) <= 90 && Math.abs(Number(lng)) <= 180
+}
+
 // Función para generar colores consistentes para usuarios
 const getUserColor = (name: string): string => {
   const colors = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316']
@@ -50,13 +62,20 @@ const getUserColor = (name: string): string => {
   return colors[Math.abs(hash) % colors.length]
 }
 
-// Computed para mostrar ubicaciones relevantes
+// Computed MEJORADO para mostrar ubicaciones relevantes con validación
 const relevantLocations = computed(() => {
   const locations: FirebaseUbicacion[] = []
   
-  // Siempre mostrar mi ubicación si existe
-  if (myLocation.value) {
+  console.log('🔍 Calculando ubicaciones relevantes...')
+  console.log('📍 Mi ubicación:', myLocation.value)
+  console.log('👥 Ubicaciones del grupo:', groupLocations.value.length)
+  
+  // Siempre mostrar mi ubicación si existe y es válida
+  if (myLocation.value && isValidCoordinate(myLocation.value.lat, myLocation.value.lng)) {
+    console.log('✅ Agregando mi ubicación válida')
     locations.push(myLocation.value)
+  } else if (myLocation.value) {
+    console.warn('⚠️ Mi ubicación tiene coordenadas inválidas:', myLocation.value.lat, myLocation.value.lng)
   }
   
   // Si tengo un grupo seleccionado, mostrar ubicaciones del grupo
@@ -64,11 +83,17 @@ const relevantLocations = computed(() => {
     groupLocations.value.forEach(loc => {
       // No duplicar mi ubicación
       if (loc.userId !== userStore.user?.uid) {
-        locations.push(loc)
+        if (isValidCoordinate(loc.lat, loc.lng)) {
+          console.log('✅ Agregando ubicación válida del miembro:', loc.userName)
+          locations.push(loc)
+        } else {
+          console.warn('⚠️ Ubicación inválida del miembro:', loc.userName, loc.lat, loc.lng)
+        }
       }
     })
   }
   
+  console.log('📊 Total ubicaciones válidas:', locations.length)
   return locations
 })
 
@@ -312,14 +337,14 @@ const hideZonasRiesgo = () => {
   }
 }
 
-// FUNCIÓN para actualizar marcadores
+// FUNCIÓN MEJORADA para actualizar marcadores con validación de coordenadas
 const updateMarkers = () => {
   if (!map.value) {
-    console.log('Mapa no disponible para actualizar marcadores')
+    console.log('🚫 Mapa no disponible para actualizar marcadores')
     return
   }
 
-  console.log('🗺️ Actualizando marcadores. Ubicaciones:', relevantLocations.value.length)
+  console.log('🗺️ Actualizando marcadores. Ubicaciones válidas:', relevantLocations.value.length)
 
   // Limpiar marcadores existentes
   markers.value.forEach((marker, key) => {
@@ -333,14 +358,28 @@ const updateMarkers = () => {
   markers.value.clear()
 
   if (relevantLocations.value.length === 0) {
-    console.log('❌ No hay ubicaciones para mostrar')
+    console.log('❌ No hay ubicaciones válidas para mostrar')
     return
   }
 
-  // Agregar marcadores de ubicaciones relevantes
+  // Agregar marcadores de ubicaciones relevantes CON VALIDACIÓN ESTRICTA
   relevantLocations.value.forEach(location => {
+    // VALIDACIÓN MÚLTIPLE DE COORDENADAS
     if (!location.lat || !location.lng) {
       console.warn('⚠️ Ubicación sin coordenadas:', location)
+      return
+    }
+
+    const lat = Number(location.lat)
+    const lng = Number(location.lng)
+
+    if (isNaN(lat) || isNaN(lng)) {
+      console.warn('⚠️ Coordenadas NaN para:', location.userName, 'lat:', location.lat, 'lng:', location.lng)
+      return
+    }
+
+    if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+      console.warn('⚠️ Coordenadas fuera de rango:', location.userName, 'lat:', lat, 'lng:', lng)
       return
     }
 
@@ -350,7 +389,7 @@ const updateMarkers = () => {
       return
     }
 
-    console.log('📍 Creando marcador para:', location.userName, 'Online:', location.isOnline)
+    console.log('📍 Creando marcador para:', location.userName, 'Coords:', lat, lng, 'Online:', location.isOnline)
 
     const color = isMyLocation ? '#ef4444' : getUserColor(location.userName)
       
@@ -420,16 +459,18 @@ const updateMarkers = () => {
         ${location.accuracy ? `<p class="text-xs text-gray-400 mt-1">🎯 Precisión: ${Math.round(location.accuracy)}m</p>` : ''}
         <div class="mt-2 pt-2 border-t border-gray-200">
           <p class="text-xs text-gray-500">
-            📍 ${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}
+            📍 ${lat.toFixed(6)}, ${lng.toFixed(6)}
           </p>
         </div>
       </div>
     `)
 
     try {
-      // Crear y agregar marcador
+      // Crear y agregar marcador CON VALIDACIÓN FINAL
+      console.log('🎯 Intentando crear marcador en coordenadas:', [lng, lat])
+      
       const marker = new (window as any).mapboxgl.Marker(el)
-        .setLngLat([location.lng, location.lat])
+        .setLngLat([lng, lat])  // Usar las coordenadas validadas
         .setPopup(popup)
         .addTo(map.value)
 
@@ -440,25 +481,40 @@ const updateMarkers = () => {
 
       markers.value.set(location.userId, marker)
       
-      console.log('✅ Marcador creado exitosamente para:', location.userName)
+      console.log('✅ Marcador creado exitosamente para:', location.userName, 'en', [lng, lat])
     } catch (error) {
-      console.error('❌ Error creando marcador:', error)
+      console.error('❌ Error creando marcador para:', location.userName, 'Error:', error)
+      console.error('❌ Coordenadas problemáticas:', [lng, lat])
     }
   })
 
   // Ajustar vista del mapa para mostrar todos los marcadores
   if (relevantLocations.value.length > 0) {
-    const bounds = new (window as any).mapboxgl.LngLatBounds()
-    relevantLocations.value.forEach(location => {
-      if (location.lat && location.lng) {
-        bounds.extend([location.lng, location.lat])
-      }
-    })
-    if (!bounds.isEmpty()) {
-      map.value.fitBounds(bounds, {
-        padding: 50,
-        maxZoom: 16
+    try {
+      const bounds = new (window as any).mapboxgl.LngLatBounds()
+      let validLocationsCount = 0
+      
+      relevantLocations.value.forEach(location => {
+        const lat = Number(location.lat)
+        const lng = Number(location.lng)
+        
+        if (!isNaN(lat) && !isNaN(lng)) {
+          bounds.extend([lng, lat])
+          validLocationsCount++
+        }
       })
+      
+      if (validLocationsCount > 0 && !bounds.isEmpty()) {
+        console.log('🗺️ Ajustando vista del mapa para', validLocationsCount, 'ubicaciones')
+        map.value.fitBounds(bounds, {
+          padding: 50,
+          maxZoom: 16
+        })
+      } else {
+        console.warn('⚠️ No se pudo ajustar la vista: bounds vacío o sin ubicaciones válidas')
+      }
+    } catch (error) {
+      console.error('❌ Error ajustando vista del mapa:', error)
     }
   }
 }
@@ -652,7 +708,12 @@ const refreshGroupLocations = () => {
       console.log('🔄 Creando nueva suscripción')
       unsubscribeGroupLocations = subscribeToGroupLocations(props.selectedGroup!.id, (locations) => {
         console.log('📡 Ubicaciones actualizadas:', locations.length)
-        groupLocations.value = locations
+        // VALIDAR UBICACIONES RECIBIDAS
+        const validLocations = locations.filter(loc => 
+          loc && isValidCoordinate(loc.lat, loc.lng)
+        )
+        console.log('📍 Ubicaciones válidas filtradas:', validLocations.length)
+        groupLocations.value = validLocations
       })
     }, 1000)
   }
@@ -668,10 +729,18 @@ onMounted(async () => {
 
   console.log('🚀 Iniciando suscripciones para usuario:', userStore.user.uid)
 
-  // Suscribirse a mi ubicación
+  // Suscribirse a mi ubicación CON VALIDACIÓN
   unsubscribeMyLocation = subscribeToMyLocation(userStore.user.uid, (location) => {
-    console.log('📍 Mi ubicación actualizada:', location)
-    myLocation.value = location
+    console.log('📍 Mi ubicación recibida:', location)
+    
+    // VALIDAR MI UBICACIÓN ANTES DE ASIGNAR
+    if (location && isValidCoordinate(location.lat, location.lng)) {
+      console.log('✅ Mi ubicación es válida:', location.lat, location.lng)
+      myLocation.value = location
+    } else {
+      console.warn('⚠️ Mi ubicación recibida tiene coordenadas inválidas:', location)
+      myLocation.value = null
+    }
   })
 })
 
@@ -700,7 +769,19 @@ watch(() => props.selectedGroup, (newGroup, oldGroup) => {
     setTimeout(() => {
       unsubscribeGroupLocations = subscribeToGroupLocations(newGroup.id, (locations) => {
         console.log('📍 Ubicaciones del grupo recibidas:', locations.length)
-        groupLocations.value = locations
+        
+        // VALIDAR UBICACIONES DEL GRUPO ANTES DE ASIGNAR
+        const validLocations = locations.filter(loc => {
+          if (!loc) return false
+          if (!isValidCoordinate(loc.lat, loc.lng)) {
+            console.warn('⚠️ Ubicación inválida filtrada:', loc.userName, loc.lat, loc.lng)
+            return false
+          }
+          return true
+        })
+        
+        console.log('📊 Ubicaciones válidas del grupo:', validLocations.length)
+        groupLocations.value = validLocations
       })
     }, 500)
   }
@@ -708,7 +789,12 @@ watch(() => props.selectedGroup, (newGroup, oldGroup) => {
 
 watch(() => relevantLocations.value, (newLocations, oldLocations) => {
   console.log('🗺️ Ubicaciones relevantes cambiaron:', newLocations.length)
-  console.log('📊 Detalles:', newLocations.map(l => ({ name: l.userName, online: l.isOnline })))
+  console.log('📊 Detalles:', newLocations.map(l => ({ 
+    name: l.userName, 
+    online: l.isOnline, 
+    coords: `${l.lat},${l.lng}`,
+    valid: isValidCoordinate(l.lat, l.lng)
+  })))
   updateMarkers()
 }, { deep: true })
 </script>
