@@ -254,50 +254,42 @@ export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> 
       return [];
     }
     
-    // 🔧 CORRECCIÓN: Buscar por circleIds (array) Y circleId (string) Y groupId
+    // 🔧 QUERIES SIN ORDERBY - No necesitan índices
     const queries = [
-      // Query 1: Buscar donde circleIds contiene el groupId (FORMATO ACTUAL)
+      // Query 1: Buscar por circleIds (FORMATO ACTUAL)
       query(
         collection(db, 'alertasCirculos'),
-        where('circleIds', 'array-contains', groupId),
-        orderBy('timestamp', 'desc'),
-        limit(50)
+        where('circleIds', 'array-contains', groupId)
       ),
-      // Query 2: Buscar por circleId (formato anterior)
+      // Query 2: Buscar por circleId (formato legacy)
       query(
         collection(db, 'alertasCirculos'),
-        where('circleId', '==', groupId),
-        orderBy('timestamp', 'desc'),
-        limit(50)
+        where('circleId', '==', groupId)
       ),
-      // Query 3: Fallback por groupId
+      // Query 3: Buscar por groupId (fallback)
       query(
         collection(db, 'alertasCirculos'),
-        where('groupId', '==', groupId),
-        orderBy('timestamp', 'desc'),
-        limit(50)
+        where('groupId', '==', groupId)
       )
     ];
     
     let allAlerts: FirebaseAlert[] = [];
     
-    for (const q of queries) {
+    // Probar cada query
+    for (let i = 0; i < queries.length; i++) {
       try {
-        const snapshot = await getDocs(q);
-        console.log(`📊 Query encontró ${snapshot.docs.length} alertas`);
+        const snapshot = await getDocs(queries[i]);
+        console.log(`📊 Query ${i+1} encontró ${snapshot.docs.length} alertas`);
         
         if (!snapshot.empty) {
           const alerts = snapshot.docs.map(doc => {
             const data = doc.data();
+            
             console.log('📄 Procesando alerta:', doc.id, {
               circleIds: data.circleIds,
-              circleId: data.circleId,
-              groupId: data.groupId,
-              activa: data.activa, // ✅ CAMPO CORRECTO
-              activatrue: data.activatrue, // Temporal para compatibilidad
+              activa: data.activa,
               name: data.name,
-              emisorId: data.emisorId,
-              timestamp: data.timestamp
+              mensaje: data.mensaje
             });
             
             return {
@@ -313,8 +305,8 @@ export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> 
                 data.coordinates || undefined,
               timestamp: data.timestamp,
               type: data.type || 'panic' as const,
-              // ✅ CORRECCIÓN PRINCIPAL: Campo 'activa' correcto
-              resolved: data.activa === false || data.activatrue === false || data.resolved === true,
+              // 🔧 LÓGICA CORREGIDA: activa=true significa NO resuelta
+              resolved: data.activa === false,
               groupId: data.circleIds?.[0] || data.circleId || data.groupId || groupId,
               message: data.mensaje || data.message || '',
               phone: data.phone || '',
@@ -324,19 +316,40 @@ export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> 
           });
           
           allAlerts = [...allAlerts, ...alerts];
+          break; // Si encuentra alertas, no probar más queries
         }
       } catch (queryError) {
-        console.warn('⚠️ Query falló, probando siguiente:', queryError);
+        console.warn(`⚠️ Query ${i+1} falló:`, queryError);
+        continue;
       }
     }
     
-    // Eliminar duplicados por ID
+    // Eliminar duplicados
     const uniqueAlerts = allAlerts.filter((alert, index, self) => 
       index === self.findIndex(a => a.id === alert.id)
     );
     
-    console.log(`✅ ${uniqueAlerts.length} alertas únicas encontradas para el grupo ${groupId}`);
-    return uniqueAlerts;
+    // 🔧 ORDENAR MANUALMENTE (sin orderBy en query)
+    const sortedAlerts = uniqueAlerts.sort((a, b) => {
+      const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp);
+      const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp);
+      return dateB.getTime() - dateA.getTime();
+    });
+    
+    console.log(`✅ ${sortedAlerts.length} alertas encontradas para grupo ${groupId}`);
+    
+    // Log de alertas procesadas
+    sortedAlerts.forEach((alert, index) => {
+      console.log(`🚨 Alerta procesada ${index + 1}:`, {
+        id: alert.id,
+        userName: alert.userName,
+        message: alert.message,
+        resolved: alert.resolved,
+        timestamp: alert.timestamp?.toDate?.() || alert.timestamp
+      });
+    });
+    
+    return sortedAlerts;
     
   } catch (error) {
     console.error('❌ Error getting group alerts:', error);
@@ -370,7 +383,7 @@ export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> 
           timestamp: data.timestamp,
           type: data.type || 'panic' as const,
           // ✅ CORRECCIÓN: Campo 'activa' correcto
-          resolved: data.activa === false || data.activatrue === false || data.resolved === true,
+          resolved: data.activa === false,
           groupId: data.circleIds?.[0] || data.circleId || data.groupId || groupId,
           message: data.mensaje || data.message || '',
           phone: data.phone || '',
@@ -404,7 +417,7 @@ export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> 
               data.coordinates || undefined,
             timestamp: data.timestamp,
             type: data.type || 'panic' as const,
-            resolved: data.activa === false || data.activatrue === false || data.resolved === true,
+            resolved: data.activa === false,
             groupId: data.circleIds?.[0] || data.circleId || data.groupId || groupId,
             message: data.mensaje || data.message || '',
             phone: data.phone || '',
@@ -526,7 +539,7 @@ const processAlertsSnapshot = (
       timestamp: data.timestamp,
       type: data.type || 'panic' as const,
       // ✅ CORRECCIÓN: Campo 'activa' correcto
-      resolved: data.activa === false || data.activatrue === false || data.resolved === true,
+      resolved: data.activa === false,
       groupId: data.circleIds?.[0] || data.circleId || data.groupId || groupId,
       message: data.mensaje || data.message || '',
       phone: data.phone || '',
@@ -594,7 +607,7 @@ const processAndSortAlerts = (snapshot: any, groupId: string): FirebaseAlert[] =
       timestamp: data.timestamp,
       type: data.type || 'panic' as const,
       // ✅ CORRECCIÓN: Campo 'activa' correcto
-      resolved: data.activa === false || data.activatrue === false || data.resolved === true,
+      resolved: data.activa === false,
       groupId: data.circleIds?.[0] || data.circleId || data.groupId || groupId,
       message: data.mensaje || data.message || '',
       phone: data.phone || '',
