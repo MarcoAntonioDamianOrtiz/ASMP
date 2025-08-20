@@ -243,7 +243,7 @@ export const deleteGroup = async (groupId: string): Promise<void> => {
   }
 };
 
-// ========== FUNCIONES DE ALERTAS COMPLETAMENTE CORREGIDAS ==========
+// ========== FUNCIONES DE ALERTAS CORREGIDAS COMPLETAMENTE ==========
 
 export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> => {
   try {
@@ -254,16 +254,23 @@ export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> 
       return [];
     }
     
-    // Probar diferentes consultas para encontrar las alertas
+    // 🔧 CORRECCIÓN PRINCIPAL: Buscar por circleIds (array) Y circleId (string)
     const queries = [
-      // Query principal - buscar por circleId
+      // Query 1: Buscar donde circleIds contiene el groupId (NUEVO FORMATO)
+      query(
+        collection(db, 'alertasCirculos'),
+        where('circleIds', 'array-contains', groupId),
+        orderBy('timestamp', 'desc'),
+        limit(50)
+      ),
+      // Query 2: Buscar por circleId (formato anterior)
       query(
         collection(db, 'alertasCirculos'),
         where('circleId', '==', groupId),
         orderBy('timestamp', 'desc'),
         limit(50)
       ),
-      // Query alternativa - buscar por groupId
+      // Query 3: Fallback por groupId
       query(
         collection(db, 'alertasCirculos'),
         where('groupId', '==', groupId),
@@ -283,10 +290,12 @@ export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> 
           const alerts = snapshot.docs.map(doc => {
             const data = doc.data();
             console.log('📄 Procesando alerta:', doc.id, {
+              circleIds: data.circleIds,
               circleId: data.circleId,
               groupId: data.groupId,
-              activa: data.activa,
-              name: data.name || data.userName,
+              activatrue: data.activatrue, // 🔧 CAMPO CORRECTO
+              name: data.name,
+              emisorId: data.emisorId,
               timestamp: data.timestamp
             });
             
@@ -303,8 +312,9 @@ export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> 
                 data.coordinates || undefined,
               timestamp: data.timestamp,
               type: data.type || 'panic' as const,
-              resolved: data.activa === false || data.resolved === true,
-              groupId: data.circleId || data.groupId || groupId,
+              // 🔧 CORRECCIÓN: Campo activatrue (no activa)
+              resolved: data.activatrue === false || data.resolved === true,
+              groupId: data.circleIds?.[0] || data.circleId || data.groupId || groupId,
               message: data.mensaje || data.message || '',
               phone: data.phone || '',
               destinatarios: data.destinatarios || [],
@@ -330,18 +340,20 @@ export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> 
   } catch (error) {
     console.error('❌ Error getting group alerts:', error);
     
-    // Fallback - buscar sin orderBy en caso de que el índice no exista
+    // 🔧 FALLBACK MEJORADO: Sin orderBy + búsqueda por circleIds
     try {
-      console.log('🔄 Intentando consulta sin orderBy...');
-      const fallbackQuery = query(
+      console.log('🔄 Intentando consulta fallback...');
+      
+      // Probar búsqueda por circleIds sin orderBy
+      const fallbackQuery1 = query(
         collection(db, 'alertasCirculos'),
-        where('circleId', '==', groupId)
+        where('circleIds', 'array-contains', groupId)
       );
       
-      const snapshot = await getDocs(fallbackQuery);
-      console.log(`📊 Fallback encontró ${snapshot.docs.length} alertas`);
+      const snapshot1 = await getDocs(fallbackQuery1);
+      console.log(`📊 Fallback 1 encontró ${snapshot1.docs.length} alertas`);
       
-      const alerts = snapshot.docs.map(doc => {
+      let fallbackAlerts = snapshot1.docs.map(doc => {
         const data = doc.data();
         return {
           id: doc.id,
@@ -356,113 +368,27 @@ export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> 
             data.coordinates || undefined,
           timestamp: data.timestamp,
           type: data.type || 'panic' as const,
-          resolved: data.activa === false || data.resolved === true,
-          groupId: data.circleId || data.groupId || groupId,
+          resolved: data.activatrue === false || data.resolved === true,
+          groupId: data.circleIds?.[0] || data.circleId || data.groupId || groupId,
           message: data.mensaje || data.message || '',
           phone: data.phone || '',
           destinatarios: data.destinatarios || [],
           emisorId: data.emisorId || data.userId || ''
         } as FirebaseAlert;
-      }).sort((a, b) => {
-        // Ordenar manualmente por timestamp
-        const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp);
-        const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp);
-        return dateB.getTime() - dateA.getTime();
       });
       
-      console.log(`✅ ${alerts.length} alertas fallback procesadas`);
-      return alerts;
-      
-    } catch (fallbackError) {
-      console.error('❌ Error en consulta fallback:', fallbackError);
-      return [];
-    }
-  }
-};
-
-export const subscribeToGroupAlerts = (
-  groupId: string, 
-  callback: (alerts: FirebaseAlert[]) => void
-) => {
-  console.log('🚨 Suscribiéndose a alertas del grupo (circleId):', groupId);
-  
-  if (!groupId) {
-    console.warn('⚠️ GroupId vacío en suscripción');
-    callback([]);
-    return () => {};
-  }
-  
-  // Intentar con orderBy primero
-  try {
-    const qWithOrder = query(
-      collection(db, 'alertasCirculos'),
-      where('circleId', '==', groupId),
-      orderBy('timestamp', 'desc')
-    );
-    
-    return onSnapshot(qWithOrder, (snapshot) => {
-      console.log(`🔄 Cambios detectados - ${snapshot.docs.length} documentos en snapshot`);
-      
-      if (snapshot.empty) {
-        console.log('📭 Snapshot vacío - no hay alertas');
-        callback([]);
-        return;
-      }
-      
-      const alerts = snapshot.docs.map(doc => {
-        const data = doc.data();
-        console.log('📄 Procesando alerta en tiempo real:', doc.id, {
-          circleId: data.circleId,
-          activa: data.activa,
-          timestamp: data.timestamp,
-          name: data.name
-        });
+      // Si no encontró nada, probar con circleId
+      if (fallbackAlerts.length === 0) {
+        const fallbackQuery2 = query(
+          collection(db, 'alertasCirculos'),
+          where('circleId', '==', groupId)
+        );
         
-        // Validar datos esenciales
-        if (!data.timestamp) {
-          console.warn('⚠️ Alerta sin timestamp en suscripción:', doc.id);
-          return null;
-        }
+        const snapshot2 = await getDocs(fallbackQuery2);
+        console.log(`📊 Fallback 2 encontró ${snapshot2.docs.length} alertas`);
         
-        return {
-          id: doc.id,
-          userId: data.emisorId || data.userId || '',
-          userEmail: data.email || data.userEmail || '',
-          userName: data.name || data.userName || 'Usuario desconocido',
-          location: data.ubicacion ? 
-            `${data.ubicacion.lat.toFixed(6)}, ${data.ubicacion.lng.toFixed(6)}` : 
-            data.location || 'Ubicación no disponible',
-          coordinates: data.ubicacion ? 
-            [data.ubicacion.lng, data.ubicacion.lat] : 
-            data.coordinates || undefined,
-          timestamp: data.timestamp,
-          type: data.type || 'panic' as const,
-          resolved: data.activa === false || data.resolved === true,
-          groupId: data.circleId || data.groupId || groupId,
-          message: data.mensaje || data.message || '',
-          phone: data.phone || '',
-          destinatarios: data.destinatarios || [],
-          emisorId: data.emisorId || data.userId || ''
-        } as FirebaseAlert;
-      }).filter(alert => alert !== null) as FirebaseAlert[];
-      
-      console.log(`📍 ${alerts.length} alertas válidas enviadas al callback para grupo ${groupId}`);
-      callback(alerts);
-    }, (error) => {
-      console.error('❌ Error in group alerts subscription with orderBy:', error);
-      
-      // Fallback sin orderBy
-      console.log('🔄 Intentando suscripción sin orderBy...');
-      const qWithoutOrder = query(
-        collection(db, 'alertasCirculos'),
-        where('circleId', '==', groupId)
-      );
-      
-      return onSnapshot(qWithoutOrder, (snapshot) => {
-        const alerts = snapshot.docs.map(doc => {
+        fallbackAlerts = snapshot2.docs.map(doc => {
           const data = doc.data();
-          if (!data.timestamp) return null;
-          
           return {
             id: doc.id,
             userId: data.emisorId || data.userId || '',
@@ -476,24 +402,82 @@ export const subscribeToGroupAlerts = (
               data.coordinates || undefined,
             timestamp: data.timestamp,
             type: data.type || 'panic' as const,
-            resolved: data.activa === false || data.resolved === true,
-            groupId: data.circleId || data.groupId || groupId,
+            resolved: data.activatrue === false || data.resolved === true,
+            groupId: data.circleIds?.[0] || data.circleId || data.groupId || groupId,
             message: data.mensaje || data.message || '',
             phone: data.phone || '',
             destinatarios: data.destinatarios || [],
             emisorId: data.emisorId || data.userId || ''
           } as FirebaseAlert;
-        }).filter(alert => alert !== null).sort((a, b) => {
-          const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp);
-          const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp);
-          return dateB.getTime() - dateA.getTime();
-        }) as FirebaseAlert[];
-        
-        callback(alerts);
-      }, (fallbackError) => {
-        console.error('❌ Error in fallback subscription:', fallbackError);
-        callback([]);
+        });
+      }
+      
+      // Ordenar manualmente por timestamp
+      const sortedAlerts = fallbackAlerts.sort((a, b) => {
+        const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp);
+        const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp);
+        return dateB.getTime() - dateA.getTime();
       });
+      
+      console.log(`✅ ${sortedAlerts.length} alertas fallback procesadas`);
+      return sortedAlerts;
+      
+    } catch (fallbackError) {
+      console.error('❌ Error en consulta fallback:', fallbackError);
+      return [];
+    }
+  }
+};
+
+export const subscribeToGroupAlerts = (
+  groupId: string, 
+  callback: (alerts: FirebaseAlert[]) => void
+) => {
+  console.log('🚨 Suscribiéndose a alertas del grupo:', groupId);
+  
+  if (!groupId) {
+    console.warn('⚠️ GroupId vacío en suscripción');
+    callback([]);
+    return () => {};
+  }
+  
+  // 🔧 SUSCRIPCIÓN MEJORADA: Probar con circleIds primero
+  try {
+    // Intentar suscripción con circleIds (array-contains)
+    const qWithArrayContains = query(
+      collection(db, 'alertasCirculos'),
+      where('circleIds', 'array-contains', groupId),
+      orderBy('timestamp', 'desc')
+    );
+    
+    return onSnapshot(qWithArrayContains, (snapshot) => {
+      console.log(`🔄 Cambios detectados (circleIds) - ${snapshot.docs.length} documentos`);
+      
+      if (snapshot.empty) {
+        console.log('📭 Snapshot vacío - probando con circleId...');
+        
+        // Fallback: probar con circleId
+        const qWithCircleId = query(
+          collection(db, 'alertasCirculos'),
+          where('circleId', '==', groupId),
+          orderBy('timestamp', 'desc')
+        );
+        
+        return onSnapshot(qWithCircleId, (snapshot2) => {
+          console.log(`🔄 Cambios detectados (circleId) - ${snapshot2.docs.length} documentos`);
+          processAlertsSnapshot(snapshot2, groupId, callback);
+        }, (error) => {
+          console.error('❌ Error en suscripción circleId:', error);
+          // Último fallback sin orderBy
+          subscribeWithoutOrderBy(groupId, callback);
+        });
+      } else {
+        processAlertsSnapshot(snapshot, groupId, callback);
+      }
+    }, (error) => {
+      console.error('❌ Error en suscripción circleIds:', error);
+      // Fallback sin orderBy
+      subscribeWithoutOrderBy(groupId, callback);
     });
     
   } catch (subscriptionError) {
@@ -501,6 +485,124 @@ export const subscribeToGroupAlerts = (
     callback([]);
     return () => {};
   }
+};
+
+// 🔧 FUNCIÓN AUXILIAR: Procesar snapshot de alertas
+const processAlertsSnapshot = (
+  snapshot: any, 
+  groupId: string, 
+  callback: (alerts: FirebaseAlert[]) => void
+) => {
+  const alerts = snapshot.docs.map((doc: any) => {
+    const data = doc.data();
+    console.log('📄 Procesando alerta en tiempo real:', doc.id, {
+      circleIds: data.circleIds,
+      circleId: data.circleId,
+      activa: data.activa,
+      timestamp: data.timestamp,
+      name: data.name
+    });
+    
+    // Validar datos esenciales
+    if (!data.timestamp) {
+      console.warn('⚠️ Alerta sin timestamp en suscripción:', doc.id);
+      return null;
+    }
+    
+    return {
+      id: doc.id,
+      userId: data.emisorId || data.userId || '',
+      userEmail: data.email || data.userEmail || '',
+      userName: data.name || data.userName || 'Usuario desconocido',
+      location: data.ubicacion ? 
+        `${data.ubicacion.lat.toFixed(6)}, ${data.ubicacion.lng.toFixed(6)}` : 
+        data.location || 'Ubicación no disponible',
+      coordinates: data.ubicacion ? 
+        [data.ubicacion.lng, data.ubicacion.lat] : 
+        data.coordinates || undefined,
+      timestamp: data.timestamp,
+      type: data.type || 'panic' as const,
+      resolved: data.activatrue === false || data.resolved === true,
+      groupId: data.circleIds?.[0] || data.circleId || data.groupId || groupId,
+      message: data.mensaje || data.message || '',
+      phone: data.phone || '',
+      destinatarios: data.destinatarios || [],
+      emisorId: data.emisorId || data.userId || ''
+    } as FirebaseAlert;
+  }).filter((alert: any) => alert !== null) as FirebaseAlert[];
+  
+  console.log(`📍 ${alerts.length} alertas válidas enviadas al callback para grupo ${groupId}`);
+  callback(alerts);
+};
+
+// 🔧 FUNCIÓN AUXILIAR: Suscripción sin orderBy
+const subscribeWithoutOrderBy = (groupId: string, callback: (alerts: FirebaseAlert[]) => void) => {
+  console.log('🔄 Intentando suscripción sin orderBy...');
+  
+  // Probar con circleIds sin orderBy
+  const qWithoutOrder1 = query(
+    collection(db, 'alertasCirculos'),
+    where('circleIds', 'array-contains', groupId)
+  );
+  
+  return onSnapshot(qWithoutOrder1, (snapshot) => {
+    if (snapshot.empty) {
+      // Fallback final con circleId
+      const qWithoutOrder2 = query(
+        collection(db, 'alertasCirculos'),
+        where('circleId', '==', groupId)
+      );
+      
+      return onSnapshot(qWithoutOrder2, (snapshot2) => {
+        const alerts = processAndSortAlerts(snapshot2, groupId);
+        callback(alerts);
+      }, (error) => {
+        console.error('❌ Error en fallback final:', error);
+        callback([]);
+      });
+    } else {
+      const alerts = processAndSortAlerts(snapshot, groupId);
+      callback(alerts);
+    }
+  }, (error) => {
+    console.error('❌ Error en suscripción sin orderBy:', error);
+    callback([]);
+  });
+};
+
+// 🔧 FUNCIÓN AUXILIAR: Procesar y ordenar alertas manualmente
+const processAndSortAlerts = (snapshot: any, groupId: string): FirebaseAlert[] => {
+  const alerts = snapshot.docs.map((doc: any) => {
+    const data = doc.data();
+    if (!data.timestamp) return null;
+    
+    return {
+      id: doc.id,
+      userId: data.emisorId || data.userId || '',
+      userEmail: data.email || data.userEmail || '',
+      userName: data.name || data.userName || 'Usuario desconocido',
+      location: data.ubicacion ? 
+        `${data.ubicacion.lat.toFixed(6)}, ${data.ubicacion.lng.toFixed(6)}` : 
+        data.location || 'Ubicación no disponible',
+      coordinates: data.ubicacion ? 
+        [data.ubicacion.lng, data.ubicacion.lat] : 
+        data.coordinates || undefined,
+      timestamp: data.timestamp,
+      type: data.type || 'panic' as const,
+      resolved: data.activa === false || data.resolved === true,
+      groupId: data.circleIds?.[0] || data.circleId || data.groupId || groupId,
+      message: data.mensaje || data.message || '',
+      phone: data.phone || '',
+      destinatarios: data.destinatarios || [],
+      emisorId: data.emisorId || data.userId || ''
+    } as FirebaseAlert;
+  }).filter((alert: any) => alert !== null).sort((a: FirebaseAlert, b: FirebaseAlert) => {
+    const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp);
+    const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp);
+    return dateB.getTime() - dateA.getTime();
+  }) as FirebaseAlert[];
+  
+  return alerts;
 };
 
 export const resolveGroupAlert = async (alertId: string): Promise<void> => {
@@ -515,7 +617,7 @@ export const resolveGroupAlert = async (alertId: string): Promise<void> => {
     }
     
     await updateDoc(alertRef, {
-      activa: false, // ✅ Marcar como inactiva (resuelta)
+      activatrue: false, // ✅ Campo correcto (no activa)
       resolved: true, // También marcar como resolved para compatibilidad
       resolvedAt: new Date()
     });
@@ -527,9 +629,8 @@ export const resolveGroupAlert = async (alertId: string): Promise<void> => {
   }
 };
 
-// ========== FUNCIONES DE UBICACIONES CORREGIDAS ==========
+// ========== RESTO DE FUNCIONES (UBICACIONES, ETC.) - SIN CAMBIOS ==========
 
-// 🔧 FUNCIÓN PRINCIPAL CORREGIDA: Actualizar ubicación del usuario
 export const updateUserLocation = async (userEmail: string, locationData: {
   lat: number;
   lng: number;
@@ -582,7 +683,6 @@ export const updateUserLocation = async (userEmail: string, locationData: {
   }
 };
 
-// 🔧 FUNCIÓN CORREGIDA: Limpiar duplicados de usuarios y sus ubicaciones
 export const cleanupDuplicateUsers = async (): Promise<{
   duplicatesFound: number;
   duplicatesCleaned: number;
@@ -694,7 +794,6 @@ export const cleanupDuplicateUsers = async (): Promise<{
   }
 };
 
-// 🔧 FUNCIÓN CORREGIDA: Limpiar ubicaciones huérfanas (sin usuario)
 export const cleanupOrphanedLocations = async (): Promise<{
   orphanedFound: number;
   orphanedCleaned: number;
@@ -757,7 +856,6 @@ export const cleanupOrphanedLocations = async (): Promise<{
   }
 };
 
-// 🔧 FUNCIÓN CORREGIDA: Obtener ubicaciones del grupo con validación estricta
 export const getGroupMembersLocations = async (groupId: string): Promise<FirebaseUbicacion[]> => {
   try {
     console.log('🔍 Obteniendo ubicaciones del grupo:', groupId);
@@ -851,7 +949,6 @@ export const getGroupMembersLocations = async (groupId: string): Promise<Firebas
   }
 };
 
-// 🔧 FUNCIÓN CORREGIDA: Suscripción en tiempo real a ubicaciones del grupo
 export const subscribeToGroupLocations = (groupId: string, callback: (locations: FirebaseUbicacion[]) => void) => {
   console.log('🔄 Suscribiéndose a ubicaciones del grupo:', groupId);
 
@@ -929,7 +1026,6 @@ export const subscribeToGroupLocations = (groupId: string, callback: (locations:
   };
 };
 
-// 🔧 FUNCIÓN CORREGIDA: Activar círculo para un miembro
 export const activateMemberCircle = async (userEmail: string): Promise<void> => {
   try {
     console.log('🎯 Activando círculo para:', userEmail);
@@ -988,7 +1084,6 @@ export const activateMemberCircle = async (userEmail: string): Promise<void> => 
   }
 };
 
-// 🔧 FUNCIÓN CORREGIDA: Desactivar círculo para un miembro
 export const deactivateMemberCircle = async (userEmail: string): Promise<void> => {
   try {
     console.log('🚫 Desactivando círculo para:', userEmail);
@@ -1027,7 +1122,6 @@ export const deactivateMemberCircle = async (userEmail: string): Promise<void> =
   }
 };
 
-// 🔧 FUNCIÓN CORREGIDA: Obtener mi ubicación
 export const getMyLocation = async (userEmail: string): Promise<FirebaseUbicacion | null> => {
   try {
     // Buscar usuario por email
@@ -1069,7 +1163,6 @@ export const getMyLocation = async (userEmail: string): Promise<FirebaseUbicacio
   }
 };
 
-// 🔧 FUNCIÓN CORREGIDA: Suscripción a mi ubicación
 export const subscribeToMyLocation = (userEmail: string, callback: (location: FirebaseUbicacion | null) => void) => {
   console.log('📍 Suscribiéndose a mi ubicación:', userEmail);
   
@@ -1135,289 +1228,6 @@ export const subscribeToMyLocation = (userEmail: string, callback: (location: Fi
       unsubscribe();
     }
   };
-};
-
-// 🔧 FUNCIÓN NUEVA: Diagnosticar problemas de ubicaciones
-export const diagnoseLocationIssues = async (userEmail?: string): Promise<{
-  totalUsers: number;
-  usersWithLocations: number;
-  usersWithValidCoords: number;
-  duplicateUsers: string[];
-  orphanedLocations: string[];
-  issues: string[];
-  suggestions: string[];
-}> => {
-  console.log('🔍 Diagnosticando problemas de ubicaciones...');
-  
-  const issues: string[] = [];
-  const suggestions: string[] = [];
-  const duplicateUsers: string[] = [];
-  const orphanedLocations: string[] = [];
-  
-  try {
-    // 1. Obtener todos los usuarios
-    const usersSnapshot = await getDocs(collection(db, 'users'));
-    const totalUsers = usersSnapshot.size;
-    
-    // 2. Obtener todas las ubicaciones
-    const locationsSnapshot = await getDocs(collection(db, 'ubicaciones'));
-    
-    // 3. Mapear usuarios por email para detectar duplicados
-    const usersByEmail = new Map<string, string[]>();
-    const userIds = new Set<string>();
-    
-    usersSnapshot.docs.forEach(doc => {
-      const data = doc.data();
-      const email = data.email;
-      
-      userIds.add(doc.id);
-      
-      if (!usersByEmail.has(email)) {
-        usersByEmail.set(email, []);
-      }
-      usersByEmail.get(email)!.push(doc.id);
-    });
-    
-    // 4. Detectar duplicados
-    for (const [email, ids] of usersByEmail.entries()) {
-      if (ids.length > 1) {
-        duplicateUsers.push(email);
-        issues.push(`Usuario duplicado: ${email} (${ids.length} copias)`);
-      }
-    }
-    
-    // 5. Verificar ubicaciones huérfanas
-    let usersWithLocations = 0;
-    let usersWithValidCoords = 0;
-    
-    locationsSnapshot.docs.forEach(doc => {
-      const locationId = doc.id;
-      const locationData = doc.data();
-      
-      if (!userIds.has(locationId)) {
-        orphanedLocations.push(locationId);
-        issues.push(`Ubicación huérfana: ${locationId} (${locationData.userEmail})`);
-      } else {
-        usersWithLocations++;
-        
-        if (locationData.lat && locationData.lng && 
-            !isNaN(locationData.lat) && !isNaN(locationData.lng) &&
-            locationData.lat !== 0 && locationData.lng !== 0) {
-          usersWithValidCoords++;
-        }
-      }
-    });
-    
-    // 6. Generar sugerencias
-    if (duplicateUsers.length > 0) {
-      suggestions.push(`Ejecutar cleanupDuplicateUsers() para limpiar ${duplicateUsers.length} duplicados`);
-    }
-    
-    if (orphanedLocations.length > 0) {
-      suggestions.push(`Ejecutar cleanupOrphanedLocations() para limpiar ${orphanedLocations.length} ubicaciones huérfanas`);
-    }
-    
-    if (usersWithValidCoords < usersWithLocations) {
-      suggestions.push(`${usersWithLocations - usersWithValidCoords} usuarios necesitan actualizar sus coordenadas`);
-    }
-    
-    // 7. Diagnóstico específico por usuario
-    if (userEmail) {
-      const userQuery = query(collection(db, 'users'), where('email', '==', userEmail));
-      const userSnapshot = await getDocs(userQuery);
-      
-      if (userSnapshot.empty) {
-        issues.push(`Usuario específico no encontrado: ${userEmail}`);
-      } else if (userSnapshot.size > 1) {
-        issues.push(`Usuario específico duplicado: ${userEmail}`);
-      } else {
-        const userId = userSnapshot.docs[0].id;
-        const locationDoc = await getDoc(doc(db, 'ubicaciones', userId));
-        
-        if (!locationDoc.exists()) {
-          issues.push(`Usuario específico sin ubicación: ${userEmail}`);
-          suggestions.push(`Ejecutar activateMemberCircle('${userEmail}') para crear ubicación`);
-        } else {
-          const locationData = locationDoc.data();
-          if (!locationData.lat || !locationData.lng || locationData.lat === 0 || locationData.lng === 0) {
-            issues.push(`Usuario específico sin coordenadas válidas: ${userEmail}`);
-            suggestions.push(`Usuario debe compartir su ubicación desde la app`);
-          }
-        }
-      }
-    }
-    
-    const result = {
-      totalUsers,
-      usersWithLocations,
-      usersWithValidCoords,
-      duplicateUsers,
-      orphanedLocations,
-      issues,
-      suggestions
-    };
-    
-    console.log('📊 Diagnóstico completado:', result);
-    return result;
-    
-  } catch (error) {
-    console.error('❌ Error en diagnóstico:', error);
-    return {
-      totalUsers: 0,
-      usersWithLocations: 0,
-      usersWithValidCoords: 0,
-      duplicateUsers: [],
-      orphanedLocations: [],
-      issues: ['Error ejecutando diagnóstico'],
-      suggestions: ['Revisar logs para más detalles']
-    };
-  }
-};
-
-// 🔧 FUNCIÓN NUEVA: Reparación automática de ubicaciones
-export const autoFixLocationIssues = async (): Promise<{
-  duplicatesCleaned: number;
-  orphansCleaned: number;
-  usersFixed: number;
-  errors: string[];
-}> => {
-  console.log('🔧 Iniciando reparación automática...');
-  
-  const errors: string[] = [];
-  let duplicatesCleaned = 0;
-  let orphansCleaned = 0;
-  let usersFixed = 0;
-  
-  try {
-    // 1. Limpiar usuarios duplicados
-    const duplicateResult = await cleanupDuplicateUsers();
-    duplicatesCleaned = duplicateResult.duplicatesCleaned;
-    errors.push(...duplicateResult.errors);
-    
-    // 2. Limpiar ubicaciones huérfanas
-    const orphanResult = await cleanupOrphanedLocations();
-    orphansCleaned = orphanResult.orphanedCleaned;
-    errors.push(...orphanResult.errors);
-    
-    // 3. Verificar que todos los usuarios tengan documento de ubicación
-    const usersSnapshot = await getDocs(collection(db, 'users'));
-    
-    for (const userDoc of usersSnapshot.docs) {
-      try {
-        const userId = userDoc.id;
-        const userData = userDoc.data();
-        const locationDoc = await getDoc(doc(db, 'ubicaciones', userId));
-        
-        if (!locationDoc.exists()) {
-          // Crear documento de ubicación básico
-          await setDoc(doc(db, 'ubicaciones', userId), {
-            userId: userId,
-            userEmail: userData.email,
-            userName: userData.name || userData.email.split('@')[0],
-            isOnline: false,
-            lastActivated: new Date(),
-            // Sin coordenadas hasta que el usuario las comparta
-          });
-          
-          usersFixed++;
-          console.log(`✅ Documento de ubicación creado para: ${userData.email}`);
-        }
-      } catch (error) {
-        const errorMsg = `Error creando ubicación para usuario ${userDoc.id}: ${error}`;
-        console.error('❌', errorMsg);
-        errors.push(errorMsg);
-      }
-    }
-    
-    console.log('🎉 Reparación automática completada:', {
-      duplicatesCleaned,
-      orphansCleaned,
-      usersFixed,
-      errors: errors.length
-    });
-    
-    return { duplicatesCleaned, orphansCleaned, usersFixed, errors };
-    
-  } catch (error) {
-    console.error('❌ Error en reparación automática:', error);
-    return {
-      duplicatesCleaned: 0,
-      orphansCleaned: 0,
-      usersFixed: 0,
-      errors: [error instanceof Error ? error.message : 'Error desconocido']
-    };
-  }
-};
-
-// ========== RESTO DE FUNCIONES ORIGINALES ==========
-
-export const cleanupUserLocation = async (userId: string): Promise<void> => {
-  try {
-    const locationRef = doc(db, 'ubicaciones', userId);
-    const locationDoc = await getDoc(locationRef);
-    
-    if (locationDoc.exists()) {
-      await deleteDoc(locationRef);
-      console.log('🧹 Documento de ubicación eliminado para userId:', userId);
-    }
-  } catch (error) {
-    console.error('❌ Error cleaning user location:', error);
-  }
-};
-
-export const setUserOffline = async (userId: string): Promise<void> => {
-  try {
-    const locationRef = doc(db, 'ubicaciones', userId);
-    const locationDoc = await getDoc(locationRef);
-    
-    if (locationDoc.exists()) {
-      await updateDoc(locationRef, {
-        isOnline: false,
-        lastSeen: new Date()
-      });
-      console.log('✅ Usuario marcado como offline:', userId);
-    }
-
-    const userRef = doc(db, 'users', userId);
-    const userDoc = await getDoc(userRef);
-    
-    if (userDoc.exists()) {
-      await updateDoc(userRef, {
-        status: 'offline',
-        lastSeen: new Date()
-      });
-    }
-  } catch (error) {
-    console.error('❌ Error setting user offline:', error);
-  }
-};
-
-export const getMemberCircleStatus = async (userEmail: string): Promise<{ active: boolean, lastUpdate: Date | null }> => {
-  try {
-    const userQuery = query(collection(db, 'users'), where('email', '==', userEmail));
-    const userSnapshot = await getDocs(userQuery);
-    
-    if (userSnapshot.empty) {
-      return { active: false, lastUpdate: null };
-    }
-    
-    const userId = userSnapshot.docs[0].id;
-    const locationDoc = await getDoc(doc(db, 'ubicaciones', userId));
-    
-    if (!locationDoc.exists()) {
-      return { active: false, lastUpdate: null };
-    }
-    
-    const locationData = locationDoc.data();
-    return {
-      active: locationData.isOnline || false,
-      lastUpdate: locationData.timestamp?.toDate() || null
-    };
-    
-  } catch (error) {
-    console.error('❌ Error obteniendo estado del círculo:', error);
-    return { active: false, lastUpdate: null };
-  }
 };
 
 // ========== FUNCIONES DE INVITACIONES Y MIEMBROS ==========
@@ -1668,7 +1478,7 @@ export const deleteUserGroup = async (groupId: string, userEmail: string): Promi
   }
 };
 
-// ========== FUNCIONES AUXILIARES PARA ESTADÍSTICAS ==========
+// ========== FUNCIONES DE ESTADÍSTICAS Y DEBUGGING ==========
 
 export const getUserGroupsAlerts = async (userEmail: string): Promise<FirebaseAlert[]> => {
   try {
@@ -1777,11 +1587,10 @@ export const getGroupAlertStats = async (groupId: string): Promise<{
   }
 };
 
-// ========== FUNCIONES DE DEBUGGING ==========
-
+// 🔧 FUNCIÓN DE DEBUGGING MEJORADA
 export const debugGroupAlerts = async (groupId: string): Promise<void> => {
   try {
-    console.log('🐛 DEBUG: Iniciando verificación de alertas para circleId:', groupId);
+    console.log('🐛 DEBUG: Iniciando verificación de alertas para grupo:', groupId);
     
     // 1. Verificar que el grupo existe
     const groupDoc = await getDoc(doc(db, 'circulos', groupId));
@@ -1794,34 +1603,71 @@ export const debugGroupAlerts = async (groupId: string): Promise<void> => {
     const allAlertsSnapshot = await getDocs(collection(db, 'alertasCirculos'));
     console.log('🐛 Total de alertas en la colección:', allAlertsSnapshot.docs.length);
     
-    // 3. Buscar alertas que coincidan con el circleId
-    const matchingAlerts = allAlertsSnapshot.docs.filter(doc => {
-      const data = doc.data();
-      return data.circleId === groupId || data.groupId === groupId;
-    });
-    
-    console.log('🐛 Alertas que coinciden con el ID:', matchingAlerts.length);
-    
-    // 4. Mostrar detalles de cada alerta
-    matchingAlerts.forEach((doc, index) => {
+    // 3. Mostrar TODAS las alertas con detalles completos
+    allAlertsSnapshot.docs.forEach((doc, index) => {
       const data = doc.data();
       console.log(`🐛 Alerta ${index + 1}:`, {
         id: doc.id,
+        circleIds: data.circleIds, // 🔧 NUEVO CAMPO
         circleId: data.circleId,
         groupId: data.groupId,
-        activa: data.activa,
+        activatrue: data.activatrue, // 🔧 CAMPO CORRECTO
         resolved: data.resolved,
         name: data.name,
         userName: data.userName,
+        email: data.email,
+        userEmail: data.userEmail,
+        emisorId: data.emisorId,
+        userId: data.userId,
         mensaje: data.mensaje,
         message: data.message,
         timestamp: data.timestamp,
         ubicacion: data.ubicacion,
-        location: data.location
+        location: data.location,
+        phone: data.phone,
+        destinatarios: data.destinatarios
       });
     });
     
-    // 5. Probar las funciones principales
+    // 4. Buscar alertas que coincidan con el grupo (TODAS LAS VARIANTES)
+    console.log(`🔍 Buscando alertas que coincidan con grupo: ${groupId}`);
+    
+    const matchingByCircleIds = allAlertsSnapshot.docs.filter(doc => {
+      const data = doc.data();
+      return data.circleIds && Array.isArray(data.circleIds) && data.circleIds.includes(groupId);
+    });
+    console.log(`🎯 Alertas con circleIds que contienen ${groupId}:`, matchingByCircleIds.length);
+    
+    const matchingByCircleId = allAlertsSnapshot.docs.filter(doc => {
+      const data = doc.data();
+      return data.circleId === groupId;
+    });
+    console.log(`🎯 Alertas con circleId == ${groupId}:`, matchingByCircleId.length);
+    
+    const matchingByGroupId = allAlertsSnapshot.docs.filter(doc => {
+      const data = doc.data();
+      return data.groupId === groupId;
+    });
+    console.log(`🎯 Alertas con groupId == ${groupId}:`, matchingByGroupId.length);
+    
+    // 5. Mostrar detalles de alertas que coinciden
+    [...matchingByCircleIds, ...matchingByCircleId, ...matchingByGroupId].forEach((doc, index) => {
+      const data = doc.data();
+      console.log(`🚨 Alerta coincidente ${index + 1}:`, {
+        id: doc.id,
+        circleIds: data.circleIds,
+        circleId: data.circleId,
+        groupId: data.groupId,
+        activatrue: data.activatrue,
+        resolved: data.resolved,
+        name: data.name,
+        mensaje: data.mensaje,
+        timestamp: data.timestamp?.toDate?.() || data.timestamp,
+        ubicacion: data.ubicacion
+      });
+    });
+    
+    // 6. Probar las funciones principales
     console.log('🔄 Probando getGroupAlerts...');
     const alerts = await getGroupAlerts(groupId);
     console.log('📋 Resultado getGroupAlerts:', alerts.length, 'alertas');
@@ -1833,11 +1679,11 @@ export const debugGroupAlerts = async (groupId: string): Promise<void> => {
         resolved: alert.resolved,
         location: alert.location,
         coordinates: alert.coordinates,
-        timestamp: alert.timestamp
+        timestamp: alert.timestamp?.toDate?.() || alert.timestamp
       });
     });
     
-    // 6. Probar estadísticas
+    // 7. Probar estadísticas
     console.log('🔄 Probando getGroupAlertStats...');
     const stats = await getGroupAlertStats(groupId);
     console.log('📊 Estadísticas:', stats);
@@ -1864,11 +1710,12 @@ export const testGroupAlerts = async (groupId: string = 'r0uNHyaM0Ux2vJPxdWBh'):
     const allAlertsSnapshot = await getDocs(collection(db, 'alertasCirculos'));
     console.log('📊 Total alertas en BD:', allAlertsSnapshot.docs.length);
     
-    // 3. Mostrar todas las alertas con sus campos
+    // 3. Mostrar todas las alertas con sus campos relevantes
     allAlertsSnapshot.docs.forEach((doc, index) => {
       const data = doc.data();
       console.log(`📄 Alerta ${index + 1}:`, {
         id: doc.id,
+        circleIds: data.circleIds,
         circleId: data.circleId,
         groupId: data.groupId,
         name: data.name,
@@ -1879,14 +1726,14 @@ export const testGroupAlerts = async (groupId: string = 'r0uNHyaM0Ux2vJPxdWBh'):
         resolved: data.resolved,
         mensaje: data.mensaje,
         message: data.message,
-        timestamp: data.timestamp,
+        timestamp: data.timestamp?.toDate?.() || data.timestamp,
         ubicacion: data.ubicacion,
         location: data.location
       });
     });
     
     // 4. Buscar alertas específicas del grupo
-    console.log(`🎯 Buscando alertas para circleId: ${groupId}`);
+    console.log(`🎯 Buscando alertas para grupo: ${groupId}`);
     const alerts = await getGroupAlerts(groupId);
     console.log(`📋 ${alerts.length} alertas encontradas`);
     
@@ -1917,15 +1764,16 @@ export const createTestAlert = async (groupId: string): Promise<string> => {
     console.log('🧪 Creando alerta de prueba para grupo:', groupId);
     
     const testAlert = {
-      circleId: groupId,
-      groupId: groupId, // Compatibilidad
+      circleIds: [groupId], // 🔧 NUEVO FORMATO: Array de IDs
+      circleId: groupId, // Mantener compatibilidad
+      groupId: groupId, // Compatibilidad adicional
       name: 'Usuario de Prueba',
       userName: 'Usuario de Prueba',
       email: 'test@example.com',
       userEmail: 'test@example.com',
       mensaje: 'Esta es una alerta de prueba',
       message: 'Esta es una alerta de prueba',
-      activa: true,
+      activatrue: true, // 🔧 CAMPO CORRECTO
       resolved: false,
       timestamp: new Date(),
       ubicacion: {
@@ -1951,7 +1799,290 @@ export const createTestAlert = async (groupId: string): Promise<string> => {
   }
 };
 
-// ========== FUNCIONES AUXILIARES PARA HISTORIAL ==========
+// ========== FUNCIONES AUXILIARES ==========
+
+export const cleanupUserLocation = async (userId: string): Promise<void> => {
+  try {
+    const locationRef = doc(db, 'ubicaciones', userId);
+    const locationDoc = await getDoc(locationRef);
+    
+    if (locationDoc.exists()) {
+      await deleteDoc(locationRef);
+      console.log('🧹 Documento de ubicación eliminado para userId:', userId);
+    }
+  } catch (error) {
+    console.error('❌ Error cleaning user location:', error);
+  }
+};
+
+export const setUserOffline = async (userId: string): Promise<void> => {
+  try {
+    const locationRef = doc(db, 'ubicaciones', userId);
+    const locationDoc = await getDoc(locationRef);
+    
+    if (locationDoc.exists()) {
+      await updateDoc(locationRef, {
+        isOnline: false,
+        lastSeen: new Date()
+      });
+      console.log('✅ Usuario marcado como offline:', userId);
+    }
+
+    const userRef = doc(db, 'users', userId);
+    const userDoc = await getDoc(userRef);
+    
+    if (userDoc.exists()) {
+      await updateDoc(userRef, {
+        status: 'offline',
+        lastSeen: new Date()
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error setting user offline:', error);
+  }
+};
+
+export const getMemberCircleStatus = async (userEmail: string): Promise<{ active: boolean, lastUpdate: Date | null }> => {
+  try {
+    const userQuery = query(collection(db, 'users'), where('email', '==', userEmail));
+    const userSnapshot = await getDocs(userQuery);
+    
+    if (userSnapshot.empty) {
+      return { active: false, lastUpdate: null };
+    }
+    
+    const userId = userSnapshot.docs[0].id;
+    const locationDoc = await getDoc(doc(db, 'ubicaciones', userId));
+    
+    if (!locationDoc.exists()) {
+      return { active: false, lastUpdate: null };
+    }
+    
+    const locationData = locationDoc.data();
+    return {
+      active: locationData.isOnline || false,
+      lastUpdate: locationData.timestamp?.toDate() || null
+    };
+    
+  } catch (error) {
+    console.error('❌ Error obteniendo estado del círculo:', error);
+    return { active: false, lastUpdate: null };
+  }
+};
+
+// ========== FUNCIONES DE DIAGNÓSTICO AVANZADAS ==========
+
+export const diagnoseLocationIssues = async (userEmail?: string): Promise<{
+  totalUsers: number;
+  usersWithLocations: number;
+  usersWithValidCoords: number;
+  duplicateUsers: string[];
+  orphanedLocations: string[];
+  issues: string[];
+  suggestions: string[];
+}> => {
+  console.log('🔍 Diagnosticando problemas de ubicaciones...');
+  
+  const issues: string[] = [];
+  const suggestions: string[] = [];
+  const duplicateUsers: string[] = [];
+  const orphanedLocations: string[] = [];
+  
+  try {
+    // 1. Obtener todos los usuarios
+    const usersSnapshot = await getDocs(collection(db, 'users'));
+    const totalUsers = usersSnapshot.size;
+    
+    // 2. Obtener todas las ubicaciones
+    const locationsSnapshot = await getDocs(collection(db, 'ubicaciones'));
+    
+    // 3. Mapear usuarios por email para detectar duplicados
+    const usersByEmail = new Map<string, string[]>();
+    const userIds = new Set<string>();
+    
+    usersSnapshot.docs.forEach(doc => {
+      const data = doc.data();
+      const email = data.email;
+      
+      userIds.add(doc.id);
+      
+      if (!usersByEmail.has(email)) {
+        usersByEmail.set(email, []);
+      }
+      usersByEmail.get(email)!.push(doc.id);
+    });
+    
+    // 4. Detectar duplicados
+    for (const [email, ids] of usersByEmail.entries()) {
+      if (ids.length > 1) {
+        duplicateUsers.push(email);
+        issues.push(`Usuario duplicado: ${email} (${ids.length} copias)`);
+      }
+    }
+    
+    // 5. Verificar ubicaciones huérfanas
+    let usersWithLocations = 0;
+    let usersWithValidCoords = 0;
+    
+    locationsSnapshot.docs.forEach(doc => {
+      const locationId = doc.id;
+      const locationData = doc.data();
+      
+      if (!userIds.has(locationId)) {
+        orphanedLocations.push(locationId);
+        issues.push(`Ubicación huérfana: ${locationId} (${locationData.userEmail})`);
+      } else {
+        usersWithLocations++;
+        
+        if (locationData.lat && locationData.lng && 
+            !isNaN(locationData.lat) && !isNaN(locationData.lng) &&
+            locationData.lat !== 0 && locationData.lng !== 0) {
+          usersWithValidCoords++;
+        }
+      }
+    });
+    
+    // 6. Generar sugerencias
+    if (duplicateUsers.length > 0) {
+      suggestions.push(`Ejecutar cleanupDuplicateUsers() para limpiar ${duplicateUsers.length} duplicados`);
+    }
+    
+    if (orphanedLocations.length > 0) {
+      suggestions.push(`Ejecutar cleanupOrphanedLocations() para limpiar ${orphanedLocations.length} ubicaciones huérfanas`);
+    }
+    
+    if (usersWithValidCoords < usersWithLocations) {
+      suggestions.push(`${usersWithLocations - usersWithValidCoords} usuarios necesitan actualizar sus coordenadas`);
+    }
+    
+    // 7. Diagnóstico específico por usuario
+    if (userEmail) {
+      const userQuery = query(collection(db, 'users'), where('email', '==', userEmail));
+      const userSnapshot = await getDocs(userQuery);
+      
+      if (userSnapshot.empty) {
+        issues.push(`Usuario específico no encontrado: ${userEmail}`);
+      } else if (userSnapshot.size > 1) {
+        issues.push(`Usuario específico duplicado: ${userEmail}`);
+      } else {
+        const userId = userSnapshot.docs[0].id;
+        const locationDoc = await getDoc(doc(db, 'ubicaciones', userId));
+        
+        if (!locationDoc.exists()) {
+          issues.push(`Usuario específico sin ubicación: ${userEmail}`);
+          suggestions.push(`Ejecutar activateMemberCircle('${userEmail}') para crear ubicación`);
+        } else {
+          const locationData = locationDoc.data();
+          if (!locationData.lat || !locationData.lng || locationData.lat === 0 || locationData.lng === 0) {
+            issues.push(`Usuario específico sin coordenadas válidas: ${userEmail}`);
+            suggestions.push(`Usuario debe compartir su ubicación desde la app`);
+          }
+        }
+      }
+    }
+    
+    const result = {
+      totalUsers,
+      usersWithLocations,
+      usersWithValidCoords,
+      duplicateUsers,
+      orphanedLocations,
+      issues,
+      suggestions
+    };
+    
+    console.log('📊 Diagnóstico completado:', result);
+    return result;
+    
+  } catch (error) {
+    console.error('❌ Error en diagnóstico:', error);
+    return {
+      totalUsers: 0,
+      usersWithLocations: 0,
+      usersWithValidCoords: 0,
+      duplicateUsers: [],
+      orphanedLocations: [],
+      issues: ['Error ejecutando diagnóstico'],
+      suggestions: ['Revisar logs para más detalles']
+    };
+  }
+};
+
+export const autoFixLocationIssues = async (): Promise<{
+  duplicatesCleaned: number;
+  orphansCleaned: number;
+  usersFixed: number;
+  errors: string[];
+}> => {
+  console.log('🔧 Iniciando reparación automática...');
+  
+  const errors: string[] = [];
+  let duplicatesCleaned = 0;
+  let orphansCleaned = 0;
+  let usersFixed = 0;
+  
+  try {
+    // 1. Limpiar usuarios duplicados
+    const duplicateResult = await cleanupDuplicateUsers();
+    duplicatesCleaned = duplicateResult.duplicatesCleaned;
+    errors.push(...duplicateResult.errors);
+    
+    // 2. Limpiar ubicaciones huérfanas
+    const orphanResult = await cleanupOrphanedLocations();
+    orphansCleaned = orphanResult.orphanedCleaned;
+    errors.push(...orphanResult.errors);
+    
+    // 3. Verificar que todos los usuarios tengan documento de ubicación
+    const usersSnapshot = await getDocs(collection(db, 'users'));
+    
+    for (const userDoc of usersSnapshot.docs) {
+      try {
+        const userId = userDoc.id;
+        const userData = userDoc.data();
+        const locationDoc = await getDoc(doc(db, 'ubicaciones', userId));
+        
+        if (!locationDoc.exists()) {
+          // Crear documento de ubicación básico
+          await setDoc(doc(db, 'ubicaciones', userId), {
+            userId: userId,
+            userEmail: userData.email,
+            userName: userData.name || userData.email.split('@')[0],
+            isOnline: false,
+            lastActivated: new Date(),
+            // Sin coordenadas hasta que el usuario las comparta
+          });
+          
+          usersFixed++;
+          console.log(`✅ Documento de ubicación creado para: ${userData.email}`);
+        }
+      } catch (error) {
+        const errorMsg = `Error creando ubicación para usuario ${userDoc.id}: ${error}`;
+        console.error('❌', errorMsg);
+        errors.push(errorMsg);
+      }
+    }
+    
+    console.log('🎉 Reparación automática completada:', {
+      duplicatesCleaned,
+      orphansCleaned,
+      usersFixed,
+      errors: errors.length
+    });
+    
+    return { duplicatesCleaned, orphansCleaned, usersFixed, errors };
+    
+  } catch (error) {
+    console.error('❌ Error en reparación automática:', error);
+    return {
+      duplicatesCleaned: 0,
+      orphansCleaned: 0,
+      usersFixed: 0,
+      errors: [error instanceof Error ? error.message : 'Error desconocido']
+    };
+  }
+};
+
+// ========== FUNCIONES DE COMPATIBILIDAD Y MIGRACIÓN ==========
 
 export const getUserLocationHistory = async (userEmail: string, limitCount: number = 10): Promise<FirebaseUbicacion[]> => {
   try {
@@ -2062,7 +2193,7 @@ export const cleanupInactiveLocations = async (maxAgeMinutes: number = 30): Prom
 
     if (cleaned > 0) {
       await batch.commit();
-      console.log('✅ Ubicaciones inactivas marcadas:', cleaned);
+      console.log(`✅ ${cleaned} ubicaciones inactivas marcadas`);
     }
 
     return { cleaned, errors };
@@ -2072,15 +2203,34 @@ export const cleanupInactiveLocations = async (maxAgeMinutes: number = 30): Prom
   }
 };
 
-// ========== FUNCIONES DE SINCRONIZACIÓN (IMPORTACIÓN DINÁMICA) ==========
+// ========== EXPORTACIONES ADICIONALES PARA COMPATIBILIDAD ==========
 
-export const createAutoSyncGroup = async (groupData: {
+export interface UnifiedGroup {
+  id: string;
   name: string;
   description: string;
   createdBy: string;
   members: string[];
+  membersUids?: string[];
   pendingInvitations: string[];
-}): Promise<string> => {
+  createdAt: any;
+  isAutoSynced: boolean;
+  lastSyncUpdate?: any;
+  codigo?: string;
+  nombre?: string;
+  tipo?: string;
+  creator?: string;
+  miembros?: Array<{
+    email: string;
+    name: string;
+    phone: string;
+    uid: string;
+    rol?: string;
+  }>;
+}
+
+// Funciones de sincronización (importación dinámica para evitar dependencias circulares)
+export const createAutoSyncGroup = async (groupData: any): Promise<string> => {
   try {
     const autoSyncModule = await import('./autoSync');
     return await autoSyncModule.createAutoSyncGroup(groupData);
@@ -2171,28 +2321,6 @@ export const forceSyncGroup = async (groupId: string): Promise<void> => {
   }
 };
 
-// ========== INTERFACE UNIFICADA ==========
+// ========== EXPORTACIÓN FINAL ==========
 
-export interface UnifiedGroup {
-  id: string;
-  name: string;
-  description: string;
-  createdBy: string;
-  members: string[];
-  membersUids?: string[];
-  pendingInvitations: string[];
-  createdAt: any; // Firestore timestamp
-  isAutoSynced: boolean;
-  lastSyncUpdate?: any; // Firestore timestamp
-  codigo?: string;
-  nombre?: string;
-  tipo?: string;
-  creator?: string;
-  miembros?: Array<{
-    email: string;
-    name: string;
-    phone: string;
-    uid: string;
-    rol?: string;
-  }>;
-}
+console.log('✅ Firebase index cargado con soporte completo para alertas con circleIds');
