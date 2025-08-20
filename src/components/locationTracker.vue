@@ -60,7 +60,7 @@ const startTracking = () => {
     maximumAge: 15000 // Cache por 15 segundos
   }
 
-  console.log('🎯 Iniciando rastreo GPS para usuario:', userStore.user?.uid)
+  console.log('🎯 Iniciando rastreo GPS para usuario:', userStore.user?.email)
 
   // Obtener posición inicial
   navigator.geolocation.getCurrentPosition(
@@ -91,7 +91,7 @@ const startTracking = () => {
   console.log('✅ Rastreo GPS iniciado con watchId:', watchId.value)
 }
 
-// FUNCIÓN MEJORADA Y CORREGIDA para actualizar la ubicación
+// ✅ FUNCIÓN CORREGIDA para actualizar la ubicación
 const updateLocation = async (position: GeolocationPosition) => {
   const { latitude, longitude, accuracy } = position.coords
   
@@ -115,36 +115,39 @@ const updateLocation = async (position: GeolocationPosition) => {
   lastUpdate.value = new Date()
 
   try {
-    // VALIDACIÓN DE USUARIO
-    if (!userStore.user?.uid) {
-      console.error('❌ No hay userId disponible')
-      error.value = 'Error: Usuario no identificado'
-      return
-    }
-
+    // ✅ VALIDACIÓN DE USUARIO CORREGIDA
     if (!userStore.user?.email) {
       console.error('❌ No hay email de usuario disponible')
       error.value = 'Error: Email de usuario no disponible'
       return
     }
 
-    // PREPARAR DATOS PARA FIREBASE
-    const locationData = {
-      userEmail: userStore.user.email,
-      userName: userStore.userProfile?.nombre || userStore.user.displayName || userStore.user.email?.split('@')[0] || 'Usuario',
-      lat: latitude, // Usar directamente los valores validados
-      lng: longitude,
-      accuracy: accuracy || null
+    if (!userStore.user?.uid) {
+      console.error('❌ No hay userId disponible')
+      error.value = 'Error: Usuario no identificado'
+      return
     }
 
-    console.log('📤 Enviando ubicación a Firebase:', locationData)
+    // ✅ PREPARAR DATOS CORRECTAMENTE
+    const locationData = {
+      lat: latitude, // Usar directamente los valores validados
+      lng: longitude,
+      accuracy: accuracy || 0
+    }
 
-    await updateUserLocation(userStore.user.uid, locationData)
+    console.log('📤 Enviando ubicación a Firebase:', {
+      userEmail: userStore.user.email,
+      userId: userStore.user.uid,
+      locationData: locationData
+    })
+
+    // ✅ LLAMADA CORREGIDA - Pasar EMAIL como primer parámetro
+    await updateUserLocation(userStore.user.email, locationData)
 
     console.log('✅ Ubicación GPS actualizada exitosamente en Firebase')
     
     // Limpiar errores previos
-    if (error.value && error.value.includes('coordenadas') || error.value.includes('inválida')) {
+    if (error.value && (error.value.includes('coordenadas') || error.value.includes('inválida'))) {
       error.value = null
     }
     
@@ -209,13 +212,25 @@ const getLocationOnce = () => {
   )
 }
 
-// Función para limpiar ubicación cuando se desactiva el rastreo
+// ✅ FUNCIÓN CORREGIDA para limpiar ubicación
 const cleanupLocation = async () => {
-  if (!userStore.user?.uid) return
+  if (!userStore.user?.email) {
+    console.warn('⚠️ No hay email de usuario para cleanup')
+    return
+  }
   
   try {
-    console.log('🧹 Limpiando ubicación del usuario:', userStore.user.uid)
-    await setUserOffline(userStore.user.uid)
+    console.log('🧹 Limpiando ubicación del usuario:', userStore.user.email)
+    
+    // Buscar el usuario por email primero
+    const { getUserByEmail } = await import('@/firebase')
+    const user = await getUserByEmail(userStore.user.email)
+    
+    if (user?.id) {
+      await setUserOffline(user.id)
+      console.log('✅ Usuario marcado como offline')
+    }
+    
     currentPosition.value = null
     lastUpdate.value = null
     console.log('✅ Ubicación limpiada exitosamente')
@@ -276,7 +291,7 @@ const checkGPSPermissions = async () => {
   return 'unknown'
 }
 
-// FUNCIÓN DE DIAGNÓSTICO completa
+// FUNCIÓN DE DIAGNÓSTICO completa MEJORADA
 const runDiagnostics = async () => {
   console.log('🔍 Ejecutando diagnósticos GPS...')
   
@@ -294,12 +309,30 @@ const runDiagnostics = async () => {
   console.log('👤 Usuario autenticado:', userStore.isAuthenticated)
   console.log('👤 UID del usuario:', userStore.user?.uid)
   console.log('👤 Email del usuario:', userStore.user?.email)
+  console.log('👤 Display Name:', userStore.user?.displayName)
   
   // Verificar estado actual
   console.log('📍 Estado tracking:', isTracking.value)
   console.log('📍 WatchID actual:', watchId.value)
   console.log('📍 Última ubicación:', currentPosition.value)
   console.log('📍 Último error:', error.value)
+  
+  // ✅ VERIFICAR SI EL USUARIO EXISTE EN FIREBASE
+  if (userStore.user?.email) {
+    try {
+      const { getUserByEmail } = await import('@/firebase')
+      const firebaseUser = await getUserByEmail(userStore.user.email)
+      
+      if (firebaseUser) {
+        console.log('✅ Usuario encontrado en Firebase:', firebaseUser)
+      } else {
+        console.error('❌ Usuario NO encontrado en Firebase para email:', userStore.user.email)
+        error.value = 'Usuario no registrado en el sistema. Contacta al administrador.'
+      }
+    } catch (err) {
+      console.error('❌ Error verificando usuario en Firebase:', err)
+    }
+  }
 }
 
 // Auto-iniciar el tracking cuando el componente se monta
@@ -309,8 +342,8 @@ onMounted(async () => {
   // Ejecutar diagnósticos
   await runDiagnostics()
   
-  if (userStore.isAuthenticated && userStore.user?.uid) {
-    console.log('🚀 Usuario autenticado, iniciando rastreo para:', userStore.user.uid)
+  if (userStore.isAuthenticated && userStore.user?.email) {
+    console.log('🚀 Usuario autenticado, iniciando rastreo para:', userStore.user.email)
     
     // Delay para asegurar que todo esté listo
     setTimeout(() => {
@@ -385,7 +418,7 @@ onUnmounted(async () => {
       >
         🔄 Reintentar
       </button>
-      <!-- BOTÓN DE DIAGNÓSTICO PARA DEBUG -->
+      <!-- BOTÓN DE DIAGNÓSTICO PARA DEBUG MEJORADO -->
       <button
         @click="runDiagnostics"
         class="px-3 py-2 bg-purple-500 hover:bg-purple-600 text-white text-sm rounded-lg transition-colors"
@@ -465,10 +498,11 @@ onUnmounted(async () => {
       </div>
     </div>
 
-    <!-- Info adicional para desarrollo -->
+    <!-- ✅ Info adicional MEJORADA para desarrollo -->
     <div v-if="userStore.user && currentPosition" class="text-xs text-gray-400 mt-4 p-2 bg-gray-50 rounded">
       <div><strong>Debug Info:</strong></div>
       <div>User ID: {{ userStore.user.uid }}</div>
+      <div>User Email: {{ userStore.user.email }}</div>
       <div>Watch ID: {{ watchId || 'N/A' }}</div>
       <div>Tracking: {{ isTracking ? 'Activo' : 'Inactivo' }}</div>
       <div>Position: {{ currentPosition.lat.toFixed(4) }}, {{ currentPosition.lng.toFixed(4) }}</div>
