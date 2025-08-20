@@ -2324,3 +2324,10 @@ export const forceSyncGroup = async (groupId: string): Promise<void> => {
 // ========== EXPORTACIÓN FINAL ==========
 
 console.log('✅ Firebase index cargado con soporte completo para alertas con circleIds');
+
+// DEBUG solo en navegador
+if (typeof window !== "undefined") {
+  (window as any).createTestAlert = createTestAlert;
+  (window as any).testGroupAlerts = testGroupAlerts;
+  (window as any).debugGroupAlerts = debugGroupAlerts;
+}
