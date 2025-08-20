@@ -288,7 +288,7 @@ export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> 
             
             console.log('📄 Procesando alerta:', doc.id, {
               circleIds: data.circleIds,
-              activa: data.activa,
+              activa: data.activatrue,
               name: data.name,
               mensaje: data.mensaje
             });
@@ -307,7 +307,7 @@ export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> 
               timestamp: data.timestamp,
               type: data.type || 'panic' as const,
               // 🔧 LÓGICA CORREGIDA: activa=true significa NO resuelta
-              resolved: data.activa === false,
+              resolved: !data.activatrue,
               groupId: data.circleIds?.[0] || data.circleId || data.groupId || groupId,
               message: data.mensaje || data.message || '',
               phone: data.phone || '',
@@ -384,7 +384,7 @@ export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> 
           timestamp: data.timestamp,
           type: data.type || 'panic' as const,
           // ✅ CORRECCIÓN: Campo 'activa' correcto
-          resolved: data.activa === false,
+          resolved: !data.activatrue,
           groupId: data.circleIds?.[0] || data.circleId || data.groupId || groupId,
           message: data.mensaje || data.message || '',
           phone: data.phone || '',
@@ -418,7 +418,7 @@ export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> 
               data.coordinates || undefined,
             timestamp: data.timestamp,
             type: data.type || 'panic' as const,
-            resolved: data.activa === false,
+            resolved: !data.activatrue,
             groupId: data.circleIds?.[0] || data.circleId || data.groupId || groupId,
             message: data.mensaje || data.message || '',
             phone: data.phone || '',
@@ -514,8 +514,8 @@ const processAlertsSnapshot = (
     console.log('📄 Procesando alerta en tiempo real:', doc.id, {
       circleIds: data.circleIds,
       circleId: data.circleId,
-      activa: data.activa, // ✅ CAMPO CORRECTO
-      activatrue: data.activatrue, // Temporal
+      activa: data.activatrue, // ✅ CAMPO CORRECTO
+      activatrue: data.activatruetrue, // Temporal
       timestamp: data.timestamp,
       name: data.name
     });
@@ -540,7 +540,7 @@ const processAlertsSnapshot = (
       timestamp: data.timestamp,
       type: data.type || 'panic' as const,
       // ✅ CORRECCIÓN: Campo 'activa' correcto
-      resolved: data.activa === false,
+      resolved: !data.activatrue,
       groupId: data.circleIds?.[0] || data.circleId || data.groupId || groupId,
       message: data.mensaje || data.message || '',
       phone: data.phone || '',
@@ -608,7 +608,7 @@ const processAndSortAlerts = (snapshot: any, groupId: string): FirebaseAlert[] =
       timestamp: data.timestamp,
       type: data.type || 'panic' as const,
       // ✅ CORRECCIÓN: Campo 'activa' correcto
-      resolved: data.activa === false,
+      resolved: !data.activatrue,
       groupId: data.circleIds?.[0] || data.circleId || data.groupId || groupId,
       message: data.mensaje || data.message || '',
       phone: data.phone || '',
@@ -637,10 +637,11 @@ export const resolveGroupAlert = async (alertId: string): Promise<void> => {
     
     // ✅ CORRECCIÓN: Usar campo 'activa' correcto
     await updateDoc(alertRef, {
-      activa: false, // ✅ CAMPO CORRECTO
-      resolved: true, // También marcar como resolved para compatibilidad
-      resolvedAt: new Date()
-    });
+  activatrue: false,  // 🔧 USAR EL CAMPO CORRECTO
+  resolved: true,
+  resolvedAt: new Date()
+});
+
     
     console.log('✅ Alerta resuelta exitosamente:', alertId);
   } catch (error) {
@@ -772,8 +773,8 @@ export const debugGroupAlerts = async (groupId: string): Promise<void> => {
         circleIds: data.circleIds, // ✅ CAMPO ACTUAL
         circleId: data.circleId,
         groupId: data.groupId,
-        activa: data.activa, // ✅ CAMPO CORRECTO
-        activatrue: data.activatrue, // Campo incorrecto (temporal)
+        activa: data.activatrue, // ✅ CAMPO CORRECTO
+        activatrue: data.activatruetrue, // Campo incorrecto (temporal)
         resolved: data.resolved,
         name: data.name,
         userName: data.userName,
@@ -820,8 +821,8 @@ export const debugGroupAlerts = async (groupId: string): Promise<void> => {
         circleIds: data.circleIds,
         circleId: data.circleId,
         groupId: data.groupId,
-        activa: data.activa, // ✅ CAMPO CORRECTO
-        activatrue: data.activatrue, // Campo temporal
+        activa: data.activatrue, // ✅ CAMPO CORRECTO
+        activatrue: data.activatruetrue, // Campo temporal
         resolved: data.resolved,
         name: data.name,
         mensaje: data.mensaje,
@@ -885,8 +886,8 @@ export const testGroupAlerts = async (groupId: string = 'r0uNHyaM0Ux2vJPxdWBh'):
         userName: data.userName,
         email: data.email,
         userEmail: data.userEmail,
-        activa: data.activa, // ✅ CAMPO CORRECTO
-        activatrue: data.activatrue, // Campo temporal
+        activa: data.activatrue, // ✅ CAMPO CORRECTO
+        activatrue: data.activatruetrue, // Campo temporal
         resolved: data.resolved,
         mensaje: data.mensaje,
         message: data.message,
@@ -2263,5 +2264,157 @@ if (typeof window !== "undefined") {
 • debugGroupAlerts('groupId') - Debug completo
 • getGroupAlerts('groupId') - Obtiene alertas del grupo
 • getGroupAlertStats('groupId') - Estadísticas del grupo
+  `);
+}
+
+// 🔍 DEBUG PASO A PASO - Agregar al final de firebase/index.ts
+
+// FUNCIÓN PARA DEBUGGEAR ESPECÍFICAMENTE TUS ALERTAS
+export const debugMisAlertas = async () => {
+  try {
+    console.log('🔍 === INICIO DEBUG ALERTAS ===');
+    
+    // 1. Verificar colección completa
+    const allAlertsSnapshot = await getDocs(collection(db, 'alertasCirculos'));
+    console.log('📊 Total documentos en alertasCirculos:', allAlertsSnapshot.docs.length);
+    
+    // 2. Mostrar TODOS los documentos con sus campos exactos
+    allAlertsSnapshot.docs.forEach((doc, index) => {
+      const data = doc.data();
+      console.log(`🚨 Documento ${index + 1}:`, {
+        id: doc.id,
+        // Mostrar TODOS los campos posibles
+        circleIds: data.circleIds,
+        circleId: data.circleId, 
+        groupId: data.groupId,
+        activatrue: data.activatrue,
+        activa: data.activa,
+        name: data.name,
+        userName: data.userName,
+        email: data.email,
+        userEmail: data.userEmail,
+        emisorId: data.emisorId,
+        userId: data.userId,
+        mensaje: data.mensaje,
+        message: data.message,
+        timestamp: data.timestamp,
+        ubicacion: data.ubicacion,
+        location: data.location,
+        phone: data.phone,
+        destinatarios: data.destinatarios
+      });
+    });
+    
+    // 3. Probar con el grupo específico que mencionaste
+    const groupId = 'r0uNHyaM0Ux2vJPxdWBh'; // Del array que mostraste
+    console.log(`🎯 Buscando alertas para grupo: ${groupId}`);
+    
+    // 4. Probar query con circleIds (array-contains)
+    try {
+      const query1 = query(
+        collection(db, 'alertasCirculos'),
+        where('circleIds', 'array-contains', groupId)
+      );
+      const snapshot1 = await getDocs(query1);
+      console.log(`✅ Query circleIds encontró: ${snapshot1.docs.length} alertas`);
+      
+      snapshot1.docs.forEach((doc, index) => {
+        const data = doc.data();
+        console.log(`📋 Alerta ${index + 1} (circleIds):`, {
+          id: doc.id,
+          name: data.name,
+          activatrue: data.activatrue,
+          resolved: !data.activatrue, // 🔧 Lógica correcta
+          mensaje: data.mensaje,
+          timestamp: data.timestamp?.toDate?.() || data.timestamp
+        });
+      });
+      
+    } catch (error) {
+      console.error('❌ Error en query circleIds:', error);
+    }
+    
+    // 5. Intentar con la función actual
+    console.log('🔄 Probando getGroupAlerts...');
+    const alerts = await getGroupAlerts(groupId);
+    console.log(`📊 getGroupAlerts devolvió: ${alerts.length} alertas`);
+    
+    alerts.forEach((alert, index) => {
+      console.log(`📌 Alert procesada ${index + 1}:`, {
+        id: alert.id,
+        userName: alert.userName,
+        message: alert.message,
+        resolved: alert.resolved,
+        timestamp: alert.timestamp
+      });
+    });
+    
+    console.log('🔍 === FIN DEBUG ALERTAS ===');
+    
+  } catch (error) {
+    console.error('❌ Error en debug:', error);
+  }
+};
+
+// FUNCIÓN SIMPLIFICADA PARA PROBAR
+export const getAlertasSimple = async (groupId = 'r0uNHyaM0Ux2vJPxdWBh') => {
+  try {
+    console.log('🧪 Función simple para grupo:', groupId);
+    
+    // Query directo sin orderBy
+    const q = query(
+      collection(db, 'alertasCirculos'),
+      where('circleIds', 'array-contains', groupId)
+    );
+    
+    const snapshot = await getDocs(q);
+    console.log(`📊 Documentos encontrados: ${snapshot.docs.length}`);
+    
+    const alertas = [];
+    snapshot.docs.forEach((doc, index) => {
+      const data = doc.data();
+      console.log(`📄 Documento ${index + 1}:`, {
+        id: doc.id,
+        name: data.name,
+        activatrue: data.activatrue,
+        mensaje: data.mensaje,
+        circleIds: data.circleIds,
+        timestamp: data.timestamp
+      });
+      
+      // Procesar con lógica simple
+      const alerta = {
+        id: doc.id,
+        userName: data.name || 'Sin nombre',
+        message: data.mensaje || 'Sin mensaje',
+        resolved: !data.activatrue,
+        timestamp: data.timestamp,
+        location: data.ubicacion ? 
+          `${data.ubicacion.lat}, ${data.ubicacion.lng}` : 'Sin ubicación',
+        coordinates: data.ubicacion ? [data.ubicacion.lng, data.ubicacion.lat] : null
+      };
+      
+      alertas.push(alerta);
+    });
+    
+    console.log('✅ Alertas procesadas:', alertas);
+    return alertas;
+    
+  } catch (error) {
+    console.error('❌ Error en función simple:', error);
+    return [];
+  }
+};
+
+// Exponer en window para usar en consola
+if (typeof window !== "undefined") {
+  window.debugMisAlertas = debugMisAlertas;
+  window.getAlertasSimple = getAlertasSimple;
+  
+  console.log(`
+🔧 FUNCIONES DEBUG DISPONIBLES:
+• debugMisAlertas() - Debug completo
+• getAlertasSimple() - Función simple
+• getAlertasSimple('tuGroupId') - Con grupo específico
   `);
 }
