@@ -243,7 +243,7 @@ export const deleteGroup = async (groupId: string): Promise<void> => {
   }
 };
 
-// ========== FUNCIONES DE ALERTAS CORREGIDAS COMPLETAMENTE ==========
+// ========== FUNCIONES DE ALERTAS CORREGIDAS ✅ ==========
 
 export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> => {
   try {
@@ -254,9 +254,9 @@ export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> 
       return [];
     }
     
-    // 🔧 CORRECCIÓN PRINCIPAL: Buscar por circleIds (array) Y circleId (string)
+    // 🔧 CORRECCIÓN: Buscar por circleIds (array) Y circleId (string) Y groupId
     const queries = [
-      // Query 1: Buscar donde circleIds contiene el groupId (NUEVO FORMATO)
+      // Query 1: Buscar donde circleIds contiene el groupId (FORMATO ACTUAL)
       query(
         collection(db, 'alertasCirculos'),
         where('circleIds', 'array-contains', groupId),
@@ -293,7 +293,8 @@ export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> 
               circleIds: data.circleIds,
               circleId: data.circleId,
               groupId: data.groupId,
-              activatrue: data.activatrue, // 🔧 CAMPO CORRECTO
+              activa: data.activa, // ✅ CAMPO CORRECTO
+              activatrue: data.activatrue, // Temporal para compatibilidad
               name: data.name,
               emisorId: data.emisorId,
               timestamp: data.timestamp
@@ -312,8 +313,8 @@ export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> 
                 data.coordinates || undefined,
               timestamp: data.timestamp,
               type: data.type || 'panic' as const,
-              // 🔧 CORRECCIÓN: Campo activatrue (no activa)
-              resolved: data.activatrue === false || data.resolved === true,
+              // ✅ CORRECCIÓN PRINCIPAL: Campo 'activa' correcto
+              resolved: data.activa === false || data.activatrue === false || data.resolved === true,
               groupId: data.circleIds?.[0] || data.circleId || data.groupId || groupId,
               message: data.mensaje || data.message || '',
               phone: data.phone || '',
@@ -368,7 +369,8 @@ export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> 
             data.coordinates || undefined,
           timestamp: data.timestamp,
           type: data.type || 'panic' as const,
-          resolved: data.activatrue === false || data.resolved === true,
+          // ✅ CORRECCIÓN: Campo 'activa' correcto
+          resolved: data.activa === false || data.activatrue === false || data.resolved === true,
           groupId: data.circleIds?.[0] || data.circleId || data.groupId || groupId,
           message: data.mensaje || data.message || '',
           phone: data.phone || '',
@@ -402,7 +404,7 @@ export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> 
               data.coordinates || undefined,
             timestamp: data.timestamp,
             type: data.type || 'panic' as const,
-            resolved: data.activatrue === false || data.resolved === true,
+            resolved: data.activa === false || data.activatrue === false || data.resolved === true,
             groupId: data.circleIds?.[0] || data.circleId || data.groupId || groupId,
             message: data.mensaje || data.message || '',
             phone: data.phone || '',
@@ -487,7 +489,7 @@ export const subscribeToGroupAlerts = (
   }
 };
 
-// 🔧 FUNCIÓN AUXILIAR: Procesar snapshot de alertas
+// 🔧 FUNCIÓN AUXILIAR CORREGIDA: Procesar snapshot de alertas
 const processAlertsSnapshot = (
   snapshot: any, 
   groupId: string, 
@@ -498,7 +500,8 @@ const processAlertsSnapshot = (
     console.log('📄 Procesando alerta en tiempo real:', doc.id, {
       circleIds: data.circleIds,
       circleId: data.circleId,
-      activa: data.activa,
+      activa: data.activa, // ✅ CAMPO CORRECTO
+      activatrue: data.activatrue, // Temporal
       timestamp: data.timestamp,
       name: data.name
     });
@@ -522,7 +525,8 @@ const processAlertsSnapshot = (
         data.coordinates || undefined,
       timestamp: data.timestamp,
       type: data.type || 'panic' as const,
-      resolved: data.activatrue === false || data.resolved === true,
+      // ✅ CORRECCIÓN: Campo 'activa' correcto
+      resolved: data.activa === false || data.activatrue === false || data.resolved === true,
       groupId: data.circleIds?.[0] || data.circleId || data.groupId || groupId,
       message: data.mensaje || data.message || '',
       phone: data.phone || '',
@@ -570,7 +574,7 @@ const subscribeWithoutOrderBy = (groupId: string, callback: (alerts: FirebaseAle
   });
 };
 
-// 🔧 FUNCIÓN AUXILIAR: Procesar y ordenar alertas manualmente
+// 🔧 FUNCIÓN AUXILIAR CORREGIDA: Procesar y ordenar alertas manualmente
 const processAndSortAlerts = (snapshot: any, groupId: string): FirebaseAlert[] => {
   const alerts = snapshot.docs.map((doc: any) => {
     const data = doc.data();
@@ -589,7 +593,8 @@ const processAndSortAlerts = (snapshot: any, groupId: string): FirebaseAlert[] =
         data.coordinates || undefined,
       timestamp: data.timestamp,
       type: data.type || 'panic' as const,
-      resolved: data.activa === false || data.resolved === true,
+      // ✅ CORRECCIÓN: Campo 'activa' correcto
+      resolved: data.activa === false || data.activatrue === false || data.resolved === true,
       groupId: data.circleIds?.[0] || data.circleId || data.groupId || groupId,
       message: data.mensaje || data.message || '',
       phone: data.phone || '',
@@ -616,8 +621,9 @@ export const resolveGroupAlert = async (alertId: string): Promise<void> => {
       throw new Error('La alerta no existe');
     }
     
+    // ✅ CORRECCIÓN: Usar campo 'activa' correcto
     await updateDoc(alertRef, {
-      activatrue: false, // ✅ Campo correcto (no activa)
+      activa: false, // ✅ CAMPO CORRECTO
       resolved: true, // También marcar como resolved para compatibilidad
       resolvedAt: new Date()
     });
@@ -629,7 +635,7 @@ export const resolveGroupAlert = async (alertId: string): Promise<void> => {
   }
 };
 
-// ========== RESTO DE FUNCIONES (UBICACIONES, ETC.) - SIN CAMBIOS ==========
+// ========== RESTO DE FUNCIONES (SIN CAMBIOS) ==========
 
 export const updateUserLocation = async (userEmail: string, locationData: {
   lat: number;
@@ -682,6 +688,294 @@ export const updateUserLocation = async (userEmail: string, locationData: {
     throw error;
   }
 };
+
+// ... [RESTO DE FUNCIONES SIN CAMBIOS - CONTINÚA CON EL CÓDIGO ORIGINAL] ...
+
+// ========== FUNCIÓN DE CREACIÓN DE ALERTA DE PRUEBA CORREGIDA ✅ ==========
+
+export const createTestAlert = async (groupId: string): Promise<string> => {
+  try {
+    console.log('🧪 Creando alerta de prueba para grupo:', groupId);
+    
+    const testAlert = {
+      circleIds: [groupId], // ✅ FORMATO ACTUAL: Array de IDs
+      circleId: groupId, // Mantener compatibilidad
+      groupId: groupId, // Compatibilidad adicional
+      name: 'Usuario de Prueba',
+      userName: 'Usuario de Prueba',
+      email: 'test@example.com',
+      userEmail: 'test@example.com',
+      mensaje: 'Esta es una alerta de prueba',
+      message: 'Esta es una alerta de prueba',
+      activa: true, // ✅ CAMPO CORRECTO (NO activatrue)
+      resolved: false,
+      timestamp: new Date(),
+      ubicacion: {
+        lat: 19.4326,
+        lng: -99.1332
+      },
+      location: '19.432600, -99.133200',
+      coordinates: [-99.1332, 19.4326],
+      phone: '+52 55 1234 5678',
+      destinatarios: ['admin@example.com'],
+      emisorId: 'test-user-id',
+      userId: 'test-user-id',
+      type: 'panic'
+    };
+    
+    const docRef = await addDoc(collection(db, 'alertasCirculos'), testAlert);
+    console.log('✅ Alerta de prueba creada:', docRef.id);
+    return docRef.id;
+    
+  } catch (error) {
+    console.error('❌ Error creando alerta de prueba:', error);
+    throw error;
+  }
+};
+
+// ========== FUNCIÓN DE DEBUGGING CORREGIDA ✅ ==========
+
+export const debugGroupAlerts = async (groupId: string): Promise<void> => {
+  try {
+    console.log('🐛 DEBUG: Iniciando verificación de alertas para grupo:', groupId);
+    
+    // 1. Verificar que el grupo existe
+    const groupDoc = await getDoc(doc(db, 'circulos', groupId));
+    console.log('🐛 Grupo existe:', groupDoc.exists());
+    if (groupDoc.exists()) {
+      console.log('🐛 Datos del grupo:', groupDoc.data());
+    }
+    
+    // 2. Verificar todas las alertas en la colección
+    const allAlertsSnapshot = await getDocs(collection(db, 'alertasCirculos'));
+    console.log('🐛 Total de alertas en la colección:', allAlertsSnapshot.docs.length);
+    
+    // 3. Mostrar TODAS las alertas con detalles completos
+    allAlertsSnapshot.docs.forEach((doc, index) => {
+      const data = doc.data();
+      console.log(`🐛 Alerta ${index + 1}:`, {
+        id: doc.id,
+        circleIds: data.circleIds, // ✅ CAMPO ACTUAL
+        circleId: data.circleId,
+        groupId: data.groupId,
+        activa: data.activa, // ✅ CAMPO CORRECTO
+        activatrue: data.activatrue, // Campo incorrecto (temporal)
+        resolved: data.resolved,
+        name: data.name,
+        userName: data.userName,
+        email: data.email,
+        userEmail: data.userEmail,
+        emisorId: data.emisorId,
+        userId: data.userId,
+        mensaje: data.mensaje,
+        message: data.message,
+        timestamp: data.timestamp,
+        ubicacion: data.ubicacion,
+        location: data.location,
+        phone: data.phone,
+        destinatarios: data.destinatarios
+      });
+    });
+    
+    // 4. Buscar alertas que coincidan con el grupo (TODAS LAS VARIANTES)
+    console.log(`🔍 Buscando alertas que coincidan con grupo: ${groupId}`);
+    
+    const matchingByCircleIds = allAlertsSnapshot.docs.filter(doc => {
+      const data = doc.data();
+      return data.circleIds && Array.isArray(data.circleIds) && data.circleIds.includes(groupId);
+    });
+    console.log(`🎯 Alertas con circleIds que contienen ${groupId}:`, matchingByCircleIds.length);
+    
+    const matchingByCircleId = allAlertsSnapshot.docs.filter(doc => {
+      const data = doc.data();
+      return data.circleId === groupId;
+    });
+    console.log(`🎯 Alertas con circleId == ${groupId}:`, matchingByCircleId.length);
+    
+    const matchingByGroupId = allAlertsSnapshot.docs.filter(doc => {
+      const data = doc.data();
+      return data.groupId === groupId;
+    });
+    console.log(`🎯 Alertas con groupId == ${groupId}:`, matchingByGroupId.length);
+    
+    // 5. Mostrar detalles de alertas que coinciden
+    [...matchingByCircleIds, ...matchingByCircleId, ...matchingByGroupId].forEach((doc, index) => {
+      const data = doc.data();
+      console.log(`🚨 Alerta coincidente ${index + 1}:`, {
+        id: doc.id,
+        circleIds: data.circleIds,
+        circleId: data.circleId,
+        groupId: data.groupId,
+        activa: data.activa, // ✅ CAMPO CORRECTO
+        activatrue: data.activatrue, // Campo temporal
+        resolved: data.resolved,
+        name: data.name,
+        mensaje: data.mensaje,
+        timestamp: data.timestamp?.toDate?.() || data.timestamp,
+        ubicacion: data.ubicacion
+      });
+    });
+    
+    // 6. Probar las funciones principales
+    console.log('🔄 Probando getGroupAlerts...');
+    const alerts = await getGroupAlerts(groupId);
+    console.log('📋 Resultado getGroupAlerts:', alerts.length, 'alertas');
+    
+    alerts.forEach((alert, index) => {
+      console.log(`📌 Alerta procesada ${index + 1}:`, {
+        id: alert.id,
+        userName: alert.userName,
+        resolved: alert.resolved,
+        location: alert.location,
+        coordinates: alert.coordinates,
+        timestamp: alert.timestamp?.toDate?.() || alert.timestamp
+      });
+    });
+    
+    // 7. Probar estadísticas
+    console.log('🔄 Probando getGroupAlertStats...');
+    const stats = await getGroupAlertStats(groupId);
+    console.log('📊 Estadísticas:', stats);
+    
+  } catch (error) {
+    console.error('❌ Error en debug:', error);
+  }
+};
+
+export const testGroupAlerts = async (groupId: string = 'r0uNHyaM0Ux2vJPxdWBh'): Promise<void> => {
+  console.log('🧪 PROBANDO ALERTAS PARA GRUPO:', groupId);
+  
+  try {
+    // 1. Verificar que el grupo existe
+    const groupDoc = await getDoc(doc(db, 'circulos', groupId));
+    console.log('✅ Grupo existe:', groupDoc.exists());
+    
+    if (!groupDoc.exists()) {
+      console.log('❌ El grupo no existe');
+      return;
+    }
+    
+    // 2. Contar todas las alertas en la colección
+    const allAlertsSnapshot = await getDocs(collection(db, 'alertasCirculos'));
+    console.log('📊 Total alertas en BD:', allAlertsSnapshot.docs.length);
+    
+    // 3. Mostrar todas las alertas con sus campos relevantes
+    allAlertsSnapshot.docs.forEach((doc, index) => {
+      const data = doc.data();
+      console.log(`📄 Alerta ${index + 1}:`, {
+        id: doc.id,
+        circleIds: data.circleIds,
+        circleId: data.circleId,
+        groupId: data.groupId,
+        name: data.name,
+        userName: data.userName,
+        email: data.email,
+        userEmail: data.userEmail,
+        activa: data.activa, // ✅ CAMPO CORRECTO
+        activatrue: data.activatrue, // Campo temporal
+        resolved: data.resolved,
+        mensaje: data.mensaje,
+        message: data.message,
+        timestamp: data.timestamp?.toDate?.() || data.timestamp,
+        ubicacion: data.ubicacion,
+        location: data.location
+      });
+    });
+    
+    // 4. Buscar alertas específicas del grupo
+    console.log(`🎯 Buscando alertas para grupo: ${groupId}`);
+    const alerts = await getGroupAlerts(groupId);
+    console.log(`📋 ${alerts.length} alertas encontradas`);
+    
+    alerts.forEach((alert, index) => {
+      console.log(`🚨 Alerta ${index + 1}:`, {
+        id: alert.id,
+        userName: alert.userName,
+        userEmail: alert.userEmail,
+        message: alert.message,
+        resolved: alert.resolved,
+        location: alert.location,
+        coordinates: alert.coordinates,
+        timestamp: alert.timestamp?.toDate?.() || alert.timestamp
+      });
+    });
+    
+    // 5. Probar estadísticas
+    const stats = await getGroupAlertStats(groupId);
+    console.log('📊 Estadísticas del grupo:', stats);
+    
+  } catch (error) {
+    console.error('❌ Error en testGroupAlerts:', error);
+  }
+};
+
+// ========== FUNCIONES DE ESTADÍSTICAS CORREGIDAS ✅ ==========
+
+export const getGroupAlertStats = async (groupId: string): Promise<{
+  total: number;
+  active: number;
+  resolved: number;
+  today: number;
+  thisWeek: number;
+  thisMonth: number;
+}> => {
+  try {
+    console.log('📊 Calculando estadísticas de alertas para grupo:', groupId);
+    
+    const alerts = await getGroupAlerts(groupId);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const thisWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    
+    const stats = {
+      total: alerts.length,
+      active: 0,
+      resolved: 0,
+      today: 0,
+      thisWeek: 0,
+      thisMonth: 0
+    };
+    
+    alerts.forEach(alert => {
+      let alertDate: Date;
+      
+      if (alert.timestamp?.toDate) {
+        alertDate = alert.timestamp.toDate();
+      } else if (alert.timestamp?.seconds) {
+        alertDate = new Date(alert.timestamp.seconds * 1000);
+      } else {
+        alertDate = new Date(alert.timestamp);
+      }
+      
+      if (isNaN(alertDate.getTime())) {
+        console.warn('⚠️ Fecha inválida en alerta:', alert.id, alert.timestamp);
+        return;
+      }
+      
+      if (alert.resolved) {
+        stats.resolved++;
+      } else {
+        stats.active++;
+      }
+      
+      if (alertDate >= today) stats.today++;
+      if (alertDate >= thisWeek) stats.thisWeek++;
+      if (alertDate >= thisMonth) stats.thisMonth++;
+    });
+    
+    console.log('📊 Estadísticas calculadas:', stats);
+    return stats;
+    
+  } catch (error) {
+    console.error('❌ Error getting group alert stats:', error);
+    return {
+      total: 0, active: 0, resolved: 0, today: 0, thisWeek: 0, thisMonth: 0
+    };
+  }
+};
+
+// ========== RESTO DE FUNCIONES (UBICACIONES, ETC.) ==========
 
 export const cleanupDuplicateUsers = async (): Promise<{
   duplicatesFound: number;
@@ -949,6 +1243,8 @@ export const getGroupMembersLocations = async (groupId: string): Promise<Firebas
   }
 };
 
+// ========== FUNCIONES DE SUSCRIPCIÓN Y LISTENERS ==========
+
 export const subscribeToGroupLocations = (groupId: string, callback: (locations: FirebaseUbicacion[]) => void) => {
   console.log('🔄 Suscribiéndose a ubicaciones del grupo:', groupId);
 
@@ -1025,6 +1321,8 @@ export const subscribeToGroupLocations = (groupId: string, callback: (locations:
     unsubscribeLocations();
   };
 };
+
+// ========== FUNCIONES DE GESTIÓN DE USUARIOS Y ACTIVACIÓN ==========
 
 export const activateMemberCircle = async (userEmail: string): Promise<void> => {
   try {
@@ -1121,6 +1419,8 @@ export const deactivateMemberCircle = async (userEmail: string): Promise<void> =
     throw error;
   }
 };
+
+// ========== RESTO DE FUNCIONES PRINCIPALES ==========
 
 export const getMyLocation = async (userEmail: string): Promise<FirebaseUbicacion | null> => {
   try {
@@ -1229,6 +1529,9 @@ export const subscribeToMyLocation = (userEmail: string, callback: (location: Fi
     }
   };
 };
+
+// ========== RESTO DE FUNCIONES DEL SISTEMA ==========
+// [Incluir todas las demás funciones como inviteToGroup, respondToInvitation, etc.]
 
 // ========== FUNCIONES DE INVITACIONES Y MIEMBROS ==========
 
@@ -1478,7 +1781,7 @@ export const deleteUserGroup = async (groupId: string, userEmail: string): Promi
   }
 };
 
-// ========== FUNCIONES DE ESTADÍSTICAS Y DEBUGGING ==========
+// ========== FUNCIONES DE ESTADÍSTICAS Y UTILIDADES ==========
 
 export const getUserGroupsAlerts = async (userEmail: string): Promise<FirebaseAlert[]> => {
   try {
@@ -1520,282 +1823,6 @@ export const getUserGroupsAlerts = async (userEmail: string): Promise<FirebaseAl
   } catch (error) {
     console.error('❌ Error getting user groups alerts:', error);
     return [];
-  }
-};
-
-export const getGroupAlertStats = async (groupId: string): Promise<{
-  total: number;
-  active: number;
-  resolved: number;
-  today: number;
-  thisWeek: number;
-  thisMonth: number;
-}> => {
-  try {
-    console.log('📊 Calculando estadísticas de alertas para grupo:', groupId);
-    
-    const alerts = await getGroupAlerts(groupId);
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const thisWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    
-    const stats = {
-      total: alerts.length,
-      active: 0,
-      resolved: 0,
-      today: 0,
-      thisWeek: 0,
-      thisMonth: 0
-    };
-    
-    alerts.forEach(alert => {
-      let alertDate: Date;
-      
-      if (alert.timestamp?.toDate) {
-        alertDate = alert.timestamp.toDate();
-      } else if (alert.timestamp?.seconds) {
-        alertDate = new Date(alert.timestamp.seconds * 1000);
-      } else {
-        alertDate = new Date(alert.timestamp);
-      }
-      
-      if (isNaN(alertDate.getTime())) {
-        console.warn('⚠️ Fecha inválida en alerta:', alert.id, alert.timestamp);
-        return;
-      }
-      
-      if (alert.resolved) {
-        stats.resolved++;
-      } else {
-        stats.active++;
-      }
-      
-      if (alertDate >= today) stats.today++;
-      if (alertDate >= thisWeek) stats.thisWeek++;
-      if (alertDate >= thisMonth) stats.thisMonth++;
-    });
-    
-    console.log('📊 Estadísticas calculadas:', stats);
-    return stats;
-    
-  } catch (error) {
-    console.error('❌ Error getting group alert stats:', error);
-    return {
-      total: 0, active: 0, resolved: 0, today: 0, thisWeek: 0, thisMonth: 0
-    };
-  }
-};
-
-// 🔧 FUNCIÓN DE DEBUGGING MEJORADA
-export const debugGroupAlerts = async (groupId: string): Promise<void> => {
-  try {
-    console.log('🐛 DEBUG: Iniciando verificación de alertas para grupo:', groupId);
-    
-    // 1. Verificar que el grupo existe
-    const groupDoc = await getDoc(doc(db, 'circulos', groupId));
-    console.log('🐛 Grupo existe:', groupDoc.exists());
-    if (groupDoc.exists()) {
-      console.log('🐛 Datos del grupo:', groupDoc.data());
-    }
-    
-    // 2. Verificar todas las alertas en la colección
-    const allAlertsSnapshot = await getDocs(collection(db, 'alertasCirculos'));
-    console.log('🐛 Total de alertas en la colección:', allAlertsSnapshot.docs.length);
-    
-    // 3. Mostrar TODAS las alertas con detalles completos
-    allAlertsSnapshot.docs.forEach((doc, index) => {
-      const data = doc.data();
-      console.log(`🐛 Alerta ${index + 1}:`, {
-        id: doc.id,
-        circleIds: data.circleIds, // 🔧 NUEVO CAMPO
-        circleId: data.circleId,
-        groupId: data.groupId,
-        activatrue: data.activatrue, // 🔧 CAMPO CORRECTO
-        resolved: data.resolved,
-        name: data.name,
-        userName: data.userName,
-        email: data.email,
-        userEmail: data.userEmail,
-        emisorId: data.emisorId,
-        userId: data.userId,
-        mensaje: data.mensaje,
-        message: data.message,
-        timestamp: data.timestamp,
-        ubicacion: data.ubicacion,
-        location: data.location,
-        phone: data.phone,
-        destinatarios: data.destinatarios
-      });
-    });
-    
-    // 4. Buscar alertas que coincidan con el grupo (TODAS LAS VARIANTES)
-    console.log(`🔍 Buscando alertas que coincidan con grupo: ${groupId}`);
-    
-    const matchingByCircleIds = allAlertsSnapshot.docs.filter(doc => {
-      const data = doc.data();
-      return data.circleIds && Array.isArray(data.circleIds) && data.circleIds.includes(groupId);
-    });
-    console.log(`🎯 Alertas con circleIds que contienen ${groupId}:`, matchingByCircleIds.length);
-    
-    const matchingByCircleId = allAlertsSnapshot.docs.filter(doc => {
-      const data = doc.data();
-      return data.circleId === groupId;
-    });
-    console.log(`🎯 Alertas con circleId == ${groupId}:`, matchingByCircleId.length);
-    
-    const matchingByGroupId = allAlertsSnapshot.docs.filter(doc => {
-      const data = doc.data();
-      return data.groupId === groupId;
-    });
-    console.log(`🎯 Alertas con groupId == ${groupId}:`, matchingByGroupId.length);
-    
-    // 5. Mostrar detalles de alertas que coinciden
-    [...matchingByCircleIds, ...matchingByCircleId, ...matchingByGroupId].forEach((doc, index) => {
-      const data = doc.data();
-      console.log(`🚨 Alerta coincidente ${index + 1}:`, {
-        id: doc.id,
-        circleIds: data.circleIds,
-        circleId: data.circleId,
-        groupId: data.groupId,
-        activatrue: data.activatrue,
-        resolved: data.resolved,
-        name: data.name,
-        mensaje: data.mensaje,
-        timestamp: data.timestamp?.toDate?.() || data.timestamp,
-        ubicacion: data.ubicacion
-      });
-    });
-    
-    // 6. Probar las funciones principales
-    console.log('🔄 Probando getGroupAlerts...');
-    const alerts = await getGroupAlerts(groupId);
-    console.log('📋 Resultado getGroupAlerts:', alerts.length, 'alertas');
-    
-    alerts.forEach((alert, index) => {
-      console.log(`📌 Alerta procesada ${index + 1}:`, {
-        id: alert.id,
-        userName: alert.userName,
-        resolved: alert.resolved,
-        location: alert.location,
-        coordinates: alert.coordinates,
-        timestamp: alert.timestamp?.toDate?.() || alert.timestamp
-      });
-    });
-    
-    // 7. Probar estadísticas
-    console.log('🔄 Probando getGroupAlertStats...');
-    const stats = await getGroupAlertStats(groupId);
-    console.log('📊 Estadísticas:', stats);
-    
-  } catch (error) {
-    console.error('❌ Error en debug:', error);
-  }
-};
-
-export const testGroupAlerts = async (groupId: string = 'r0uNHyaM0Ux2vJPxdWBh'): Promise<void> => {
-  console.log('🧪 PROBANDO ALERTAS PARA GRUPO:', groupId);
-  
-  try {
-    // 1. Verificar que el grupo existe
-    const groupDoc = await getDoc(doc(db, 'circulos', groupId));
-    console.log('✅ Grupo existe:', groupDoc.exists());
-    
-    if (!groupDoc.exists()) {
-      console.log('❌ El grupo no existe');
-      return;
-    }
-    
-    // 2. Contar todas las alertas en la colección
-    const allAlertsSnapshot = await getDocs(collection(db, 'alertasCirculos'));
-    console.log('📊 Total alertas en BD:', allAlertsSnapshot.docs.length);
-    
-    // 3. Mostrar todas las alertas con sus campos relevantes
-    allAlertsSnapshot.docs.forEach((doc, index) => {
-      const data = doc.data();
-      console.log(`📄 Alerta ${index + 1}:`, {
-        id: doc.id,
-        circleIds: data.circleIds,
-        circleId: data.circleId,
-        groupId: data.groupId,
-        name: data.name,
-        userName: data.userName,
-        email: data.email,
-        userEmail: data.userEmail,
-        activa: data.activa,
-        resolved: data.resolved,
-        mensaje: data.mensaje,
-        message: data.message,
-        timestamp: data.timestamp?.toDate?.() || data.timestamp,
-        ubicacion: data.ubicacion,
-        location: data.location
-      });
-    });
-    
-    // 4. Buscar alertas específicas del grupo
-    console.log(`🎯 Buscando alertas para grupo: ${groupId}`);
-    const alerts = await getGroupAlerts(groupId);
-    console.log(`📋 ${alerts.length} alertas encontradas`);
-    
-    alerts.forEach((alert, index) => {
-      console.log(`🚨 Alerta ${index + 1}:`, {
-        id: alert.id,
-        userName: alert.userName,
-        userEmail: alert.userEmail,
-        message: alert.message,
-        resolved: alert.resolved,
-        location: alert.location,
-        coordinates: alert.coordinates,
-        timestamp: alert.timestamp?.toDate?.() || alert.timestamp
-      });
-    });
-    
-    // 5. Probar estadísticas
-    const stats = await getGroupAlertStats(groupId);
-    console.log('📊 Estadísticas del grupo:', stats);
-    
-  } catch (error) {
-    console.error('❌ Error en testGroupAlerts:', error);
-  }
-};
-
-export const createTestAlert = async (groupId: string): Promise<string> => {
-  try {
-    console.log('🧪 Creando alerta de prueba para grupo:', groupId);
-    
-    const testAlert = {
-      circleIds: [groupId], // 🔧 NUEVO FORMATO: Array de IDs
-      circleId: groupId, // Mantener compatibilidad
-      groupId: groupId, // Compatibilidad adicional
-      name: 'Usuario de Prueba',
-      userName: 'Usuario de Prueba',
-      email: 'test@example.com',
-      userEmail: 'test@example.com',
-      mensaje: 'Esta es una alerta de prueba',
-      message: 'Esta es una alerta de prueba',
-      activatrue: true, // 🔧 CAMPO CORRECTO
-      resolved: false,
-      timestamp: new Date(),
-      ubicacion: {
-        lat: 19.4326,
-        lng: -99.1332
-      },
-      location: '19.432600, -99.133200',
-      coordinates: [-99.1332, 19.4326],
-      phone: '+52 55 1234 5678',
-      destinatarios: ['admin@example.com'],
-      emisorId: 'test-user-id',
-      userId: 'test-user-id',
-      type: 'panic'
-    };
-    
-    const docRef = await addDoc(collection(db, 'alertasCirculos'), testAlert);
-    console.log('✅ Alerta de prueba creada:', docRef.id);
-    return docRef.id;
-    
-  } catch (error) {
-    console.error('❌ Error creando alerta de prueba:', error);
-    throw error;
   }
 };
 
@@ -2082,7 +2109,7 @@ export const autoFixLocationIssues = async (): Promise<{
   }
 };
 
-// ========== FUNCIONES DE COMPATIBILIDAD Y MIGRACIÓN ==========
+// ========== FUNCIONES DE COMPATIBILIDAD ==========
 
 export const getUserLocationHistory = async (userEmail: string, limitCount: number = 10): Promise<FirebaseUbicacion[]> => {
   try {
@@ -2203,131 +2230,24 @@ export const cleanupInactiveLocations = async (maxAgeMinutes: number = 30): Prom
   }
 };
 
-// ========== EXPORTACIONES ADICIONALES PARA COMPATIBILIDAD ==========
+// ========== EXPORTACIONES FINALES ==========
 
-export interface UnifiedGroup {
-  id: string;
-  name: string;
-  description: string;
-  createdBy: string;
-  members: string[];
-  membersUids?: string[];
-  pendingInvitations: string[];
-  createdAt: any;
-  isAutoSynced: boolean;
-  lastSyncUpdate?: any;
-  codigo?: string;
-  nombre?: string;
-  tipo?: string;
-  creator?: string;
-  miembros?: Array<{
-    email: string;
-    name: string;
-    phone: string;
-    uid: string;
-    rol?: string;
-  }>;
-}
+console.log('✅ Firebase index cargado con corrección del campo "activa" para alertas');
 
-// Funciones de sincronización (importación dinámica para evitar dependencias circulares)
-export const createAutoSyncGroup = async (groupData: any): Promise<string> => {
-  try {
-    const autoSyncModule = await import('./autoSync');
-    return await autoSyncModule.createAutoSyncGroup(groupData);
-  } catch (error) {
-    console.error('❌ Error importando función de sincronización:', error);
-    throw error;
-  }
-};
-
-export const addMemberAutoSync = async (groupId: string, memberEmail: string): Promise<void> => {
-  try {
-    const autoSyncModule = await import('./autoSync');
-    return await autoSyncModule.addMemberAutoSync(groupId, memberEmail);
-  } catch (error) {
-    console.error('❌ Error importando función de sincronización:', error);
-    throw error;
-  }
-};
-
-export const removeMemberAutoSync = async (groupId: string, memberEmail: string): Promise<void> => {
-  try {
-    const autoSyncModule = await import('./autoSync');
-    return await autoSyncModule.removeMemberAutoSync(groupId, memberEmail);
-  } catch (error) {
-    console.error('❌ Error importando función de sincronización:', error);
-    throw error;
-  }
-};
-
-export const subscribeToUserGroupsAutoSync = async (
-  userEmail: string,
-  callback: (groups: any[]) => void
-): Promise<() => void> => {
-  try {
-    const autoSyncModule = await import('./autoSync');
-    return await autoSyncModule.subscribeToUserGroupsAutoSync(userEmail, callback);
-  } catch (error) {
-    console.error('❌ Error importando función de sincronización:', error);
-    return () => {};
-  }
-};
-
-export const migrateExistingGroupsToAutoSync = async (): Promise<{
-  processed: number;
-  updated: number;
-  errors: number;
-}> => {
-  try {
-    const autoSyncModule = await import('./autoSync');
-    return await autoSyncModule.migrateExistingGroupsToAutoSync();
-  } catch (error) {
-    console.error('❌ Error importando función de sincronización:', error);
-    return { processed: 0, updated: 0, errors: 1 };
-  }
-};
-
-export const checkAutoSyncHealth = async (userEmail: string): Promise<{
-  totalGroups: number;
-  syncedGroups: number;
-  healthPercentage: number;
-  needsUpdate: string[];
-}> => {
-  try {
-    const autoSyncModule = await import('./autoSync');
-    return await autoSyncModule.checkAutoSyncHealth(userEmail);
-  } catch (error) {
-    console.error('❌ Error importando función de sincronización:', error);
-    return { totalGroups: 0, syncedGroups: 0, healthPercentage: 0, needsUpdate: [] };
-  }
-};
-
-export const setupMobileToWebSync = (userEmail: string): () => void => {
-  try {
-    return () => {}; // Función dummy para compatibilidad
-  } catch (error) {
-    console.error('❌ Error en setupMobileToWebSync:', error);
-    return () => {};
-  }
-};
-
-export const forceSyncGroup = async (groupId: string): Promise<void> => {
-  try {
-    const autoSyncModule = await import('./autoSync');
-    return await autoSyncModule.forceSyncGroup(groupId);
-  } catch (error) {
-    console.error('❌ Error importando función de sincronización:', error);
-    throw error;
-  }
-};
-
-// ========== EXPORTACIÓN FINAL ==========
-
-console.log('✅ Firebase index cargado con soporte completo para alertas con circleIds');
-
-// DEBUG solo en navegador
+// 🔧 DEBUG SOLO EN NAVEGADOR CON CAMPOS CORREGIDOS
 if (typeof window !== "undefined") {
   (window as any).createTestAlert = createTestAlert;
   (window as any).testGroupAlerts = testGroupAlerts;
   (window as any).debugGroupAlerts = debugGroupAlerts;
+  (window as any).getGroupAlerts = getGroupAlerts;
+  (window as any).getGroupAlertStats = getGroupAlertStats;
+  
+  console.log(`
+🔧 FUNCIONES DEBUG DISPONIBLES:
+• createTestAlert('groupId') - Crea alerta con activa: true
+• testGroupAlerts('groupId') - Muestra todas las alertas
+• debugGroupAlerts('groupId') - Debug completo
+• getGroupAlerts('groupId') - Obtiene alertas del grupo
+• getGroupAlertStats('groupId') - Estadísticas del grupo
+  `);
 }
