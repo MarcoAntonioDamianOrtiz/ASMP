@@ -69,6 +69,7 @@ export interface FirebaseGroup {
 
 export interface FirebaseAlert {
   id: string;
+  circleIds?: string[]; // Formato actual
   userId: string;
   userEmail: string;
   userName: string;
