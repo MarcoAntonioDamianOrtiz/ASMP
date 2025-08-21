@@ -105,7 +105,7 @@ import LayoutView from './LayoutView.vue';
                     <div>
                         <div class="flex items-center mb-8">
                             <img src="@/assets/icons/equipo.png" alt="Equipo" class="w-12 h-12 mr-3" />
-                            <h3 class="text-2xl font-bold text-green-600">Nuestro Equipo</h3>
+                            <h3 class="text-2xl font-bold text-green-600">Equipo de desarrollo</h3>
                         </div>
 
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
@@ -115,15 +115,15 @@ import LayoutView from './LayoutView.vue';
                                     class=" flex items-center justify-center mx-auto mb-3">
                                     <img src="@/assets/img/marco.jpg" alt="Usuario" style="border-radius: 50%" class="w-20 h-20" />
                                 </div>
-                                <h4 class="font-semibold text-gray-800 text-sm">MARCO ANTONIO DAMIAN ORTIZ</h4>
+                                <h4 class="font-semibold text-gray-800 text-sm">Marco Antonio Damian Ortiz</h4>
                                 <p class="text-xs text-gray-600 mt-1">Sistema de gestión web de seguridad</p>
                             </div>
 
                             <!-- Antony de la Cruz -->
                             <div class="border border-gray-200 bg-white p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow">
                                 <div
-                                    class="bg-gray-200 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-3">
-                                    <!-- <img src="@/assets/icons/usuario.png" alt="Usuario" class="w-10 h-10" /> -->
+                                    class=" flex items-center justify-center mx-auto mb-3">
+                                    <img src="@/assets/img/Antony.jpg" alt="Usuario" style="border-radius: 50%" class="w-20 h-20" />
                                 </div>
                                 <h4 class="font-semibold text-gray-800 text-sm">Antony de la cruz</h4>
                                 <p class="text-xs text-gray-600 mt-1">App móvil</p>
@@ -132,20 +132,20 @@ import LayoutView from './LayoutView.vue';
                             <!-- Daniel -->
                             <div class="border border-gray-200 bg-white p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow">
                                 <div
-                                    class="bg-gray-200 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-3">
-                                    <!-- <img src="@/assets/icons/usuario.png" alt="Usuario" class="w-10 h-10" /> -->
+                                    class=" flex items-center justify-center mx-auto mb-3">
+                                    <img src="@/assets/img/Daniel.jpg" alt="Usuario" style="border-radius: 50%" class="w-20 h-20" />
                                 </div>
-                                <h4 class="font-semibold text-gray-800 text-sm">DANIEL</h4>
+                                <h4 class="font-semibold text-gray-800 text-sm">Daniel Zenteno Acosta</h4>
                                 <p class="text-xs text-gray-600 mt-1">IOT</p>
                             </div>
 
                             <!-- Rodrigo Smartwatch -->
                             <div class="border border-gray-200 bg-white p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow">
                                 <div
-                                    class="bg-gray-200 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-3">
-                                    <!-- <img src="@/assets/icons/usuario.png" alt="Usuario" class="w-10 h-10" /> -->
+                                    class=" flex items-center justify-center mx-auto mb-3">
+                                    <img src="@/assets/img/Rodrigo.jpg" alt="Usuario" style="border-radius: 50%" class="w-20 h-20" />
                                 </div>
-                                <h4 class="font-semibold text-gray-800 text-sm">Rodrigo</h4>
+                                <h4 class="font-semibold text-gray-800 text-sm">Rodrigo Aguilar Flores</h4>
                                 <p class="text-xs text-gray-600 mt-1">Smartwatch</p>
                             </div>
                         </div>

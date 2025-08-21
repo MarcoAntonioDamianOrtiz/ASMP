@@ -4,10 +4,10 @@ import {
   respondToInvitation,
   subscribeToUserInvitations,
   inviteToGroup,
-  resolveGroupAlert, // Nueva función
-  subscribeToGroupAlerts, // Nueva función
-  getUserGroupsAlerts, // Nueva función
-  getGroupAlertStats, // Nueva función
+  resolveGroupAlert,
+  subscribeToGroupAlerts,
+  getUserGroupsAlerts,
+  getGroupAlertStats,
   type FirebaseAlert,
   type GroupInvitation 
 } from '@/firebase'
@@ -29,7 +29,7 @@ import { useUserStore } from '@/stores/user'
 
 const userStore = useUserStore()
 const userGroups = ref<UnifiedGroup[]>([])
-const groupAlerts = ref<FirebaseAlert[]>([]) // 🔧 TIPO CORREGIDO
+const groupAlerts = ref<FirebaseAlert[]>([])
 const pendingInvitations = ref<GroupInvitation[]>([])
 const loading = ref(true)
 const selectedGroup = ref<UnifiedGroup | null>(null)
@@ -282,7 +282,7 @@ const updateAlertStats = async () => {
   }
 }
 
-// 🔧 FUNCIÓN CORREGIDA - Suscripción a alertas con lógica del campo "resolved" CORREGIDA
+// 🔧 FUNCIÓN CRÍTICA CORREGIDA - Aquí estaba el problema principal
 const subscribeToSelectedGroupAlerts = (groupId: string) => {
   console.log('🚨 subscribeToSelectedGroupAlerts llamada con groupId:', groupId)
   
@@ -306,9 +306,9 @@ const subscribeToSelectedGroupAlerts = (groupId: string) => {
       console.log('📨 CALLBACK RECIBIDO - Alertas del grupo:', groupId)
       console.log('📊 Cantidad de alertas recibidas:', alerts.length)
       
-      // 🔧 PROCESAMIENTO CORREGIDO DE ALERTAS
+      // 🔧 LÓGICA CORREGIDA - El problema estaba aquí
       const processedAlerts = alerts.map((alert, index) => {
-        console.log(`📋 Alerta ${index + 1} RAW:`, {
+        console.log(`📋 Alerta ${index + 1} RAW desde Firebase:`, {
           id: alert.id,
           userName: alert.userName,
           message: alert.message,
@@ -318,20 +318,25 @@ const subscribeToSelectedGroupAlerts = (groupId: string) => {
         })
         
         // 🔧 LÓGICA CORREGIDA DEFINITIVA:
-        // Por defecto, todas las alertas son ACTIVAS (no resueltas) cuando llegan
-        // Solo se marcan como resueltas cuando:
-        // 1. El campo 'activatrue' es explícitamente false
-        // 2. O el campo 'resolved' es explícitamente true
+        // Una alerta se considera RESUELTA solo si:
+        // 1. El campo 'resolved' es explícitamente true
+        // 2. O el campo 'activatrue' es explícitamente false
+        // IMPORTANTE: Si ninguno de estos campos existe o son undefined/null,
+        // la alerta se considera ACTIVA por defecto
         
         let isResolved = false
         
-        // Verificar si la alerta fue resuelta explícitamente
-        if ((alert as any).activatrue === false || alert.resolved === true) {
+        // Verificar estado de resolución
+        if (alert.resolved === true) {
           isResolved = true
-          console.log(`   → Alerta marcada como RESUELTA (activatrue: ${(alert as any).activatrue}, resolved: ${alert.resolved})`)
+          console.log(`   → Alerta marcada como RESUELTA (resolved: true)`)
+        } else if ((alert as any).activatrue === false) {
+          isResolved = true
+          console.log(`   → Alerta marcada como RESUELTA (activatrue: false)`)
         } else {
+          // 🔧 CAMBIO CRÍTICO: Por defecto las alertas son ACTIVAS
           isResolved = false
-          console.log(`   → Alerta marcada como ACTIVA por defecto`)
+          console.log(`   → Alerta marcada como ACTIVA (estado por defecto)`)
         }
         
         const processedAlert = {
@@ -339,7 +344,7 @@ const subscribeToSelectedGroupAlerts = (groupId: string) => {
           resolved: isResolved
         }
         
-        console.log(`✅ Alerta ${index + 1} FINAL:`, {
+        console.log(`✅ Alerta ${index + 1} PROCESADA:`, {
           id: processedAlert.id,
           userName: processedAlert.userName,
           resolved: processedAlert.resolved,
@@ -356,7 +361,7 @@ const subscribeToSelectedGroupAlerts = (groupId: string) => {
       // Mostrar resumen de estados
       const activeAlerts = processedAlerts.filter(a => !a.resolved).length
       const resolvedAlerts = processedAlerts.filter(a => a.resolved).length
-      console.log(`📊 RESUMEN: ${activeAlerts} SOS ACTIVAS, ${resolvedAlerts} RESUELTAS`)
+      console.log(`📊 RESUMEN FINAL: ${activeAlerts} SOS ACTIVAS, ${resolvedAlerts} RESUELTAS`)
       
       // Actualizar estadísticas
       updateAlertStats()
@@ -655,7 +660,7 @@ onUnmounted(() => {
   if (unsubscribeInvitations) unsubscribeInvitations()
 })
 
-// 🔧 DEBUG - Exponer funciones para testing (con corrección del campo resolved)
+// 🔧 DEBUG - Exponer funciones para testing
 if (typeof window !== 'undefined') {
   (window as any).debugEstadisticas = {
     groupAlerts: () => {
@@ -687,6 +692,17 @@ if (typeof window !== 'undefined') {
       // Importar función de debug de Firebase
       const { debugGroupAlerts } = await import('@/firebase')
       await debugGroupAlerts(selectedGroup.value.id)
+    },
+    // 🔧 NUEVA FUNCIÓN: Cambiar manualmente el estado de una alerta
+    toggleAlertState: (alertId: string) => {
+      const alertIndex = groupAlerts.value.findIndex(a => a.id === alertId)
+      if (alertIndex !== -1) {
+        groupAlerts.value[alertIndex].resolved = !groupAlerts.value[alertIndex].resolved
+        console.log('🔄 Estado de alerta cambiado:', {
+          id: alertId,
+          newState: groupAlerts.value[alertIndex].resolved ? 'RESUELTA' : 'ACTIVA'
+        })
+      }
     }
   }
   
@@ -697,6 +713,7 @@ if (typeof window !== 'undefined') {
 • debugEstadisticas.filteredAlerts() - Ver alertas filtradas  
 • debugEstadisticas.checkAlertStates() - Verificar estado real en Firebase
 • debugEstadisticas.forceRefresh() - Forzar actualización
+• debugEstadisticas.toggleAlertState('alertId') - Cambiar estado manualmente
   `)
 }
 </script>
@@ -741,8 +758,8 @@ if (typeof window !== 'undefined') {
             </div>
             <!-- 🔧 INDICADOR DE ALERTAS AGREGADO -->
             <div class="flex items-center bg-red-50 px-3 py-2 rounded-lg">
-              <span class="w-2 h-2 bg-red-500 rounded-full mr-2" :class="{ 'animate-pulse': groupAlerts.length > 0 }"></span>
-              <span class="text-red-700 font-medium">{{ groupAlerts.length }} alertas</span>
+              <span class="w-2 h-2 bg-red-500 rounded-full mr-2" :class="{ 'animate-pulse': groupAlerts.filter(a => !a.resolved).length > 0 }"></span>
+              <span class="text-red-700 font-medium">{{ groupAlerts.filter(a => !a.resolved).length }} SOS activas</span>
             </div>
             <div class="flex items-center px-3 py-2 rounded-lg" :class="{
               'bg-green-50': autoSyncHealth.healthPercentage >= 90,
@@ -816,8 +833,6 @@ if (typeof window !== 'undefined') {
           </div>
         </div>
       </div>
-
-
 
       <!-- Invitaciones pendientes -->
       <div v-if="pendingInvitations.length > 0" class="mx-6 mt-4">
@@ -1001,7 +1016,7 @@ if (typeof window !== 'undefined') {
           <div class="flex-1 overflow-y-auto" style="max-height: calc(100vh - 450px);">
             <div v-if="userGroups.length === 0 && !loading" class="flex flex-col items-center justify-center py-12 text-gray-500">
               <svg class="w-16 h-16 mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 715.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
               </svg>
               <p class="text-lg font-medium">No tienes grupos aún</p>
               <p class="text-sm mt-1">Crea tu primer grupo para comenzar</p>
@@ -1142,7 +1157,7 @@ if (typeof window !== 'undefined') {
                 <svg class="w-5 h-5 mr-2 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.996-.833-2.764 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
                 </svg>
-                <span class="truncate">Alertas del Grupo</span>
+                <span class="truncate">Alertas SOS</span>
               </h2>
               <span class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full flex-shrink-0">
                 {{ filteredAlerts.length }}
@@ -1158,6 +1173,15 @@ if (typeof window !== 'undefined') {
                   </svg>
                   <span class="text-sm font-medium text-gray-800 truncate" :title="selectedGroup.name">
                     {{ selectedGroup.name }}
+                  </span>
+                </div>
+                <!-- 🔧 CONTADOR DE ALERTAS ACTIVAS VS RESUELTAS -->
+                <div class="flex items-center space-x-2 text-xs">
+                  <span class="bg-red-100 text-red-700 px-2 py-1 rounded-full">
+                    {{ filteredAlerts.filter(a => !a.resolved).length }} activas
+                  </span>
+                  <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
+                    {{ filteredAlerts.filter(a => a.resolved).length }} resueltas
                   </span>
                 </div>
               </div>
@@ -1326,7 +1350,7 @@ if (typeof window !== 'undefined') {
                       <svg class="w-4 h-4 mr-2 animate-pulse flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                         <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
                       </svg>
-                      <span>Alerta activa</span>
+                      <span>Alerta activa - Requiere atención</span>
                     </div>
                     <!-- Botón para resolver alerta -->
                     <button
