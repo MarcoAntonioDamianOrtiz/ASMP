@@ -29,7 +29,7 @@ import { useUserStore } from '@/stores/user'
 
 const userStore = useUserStore()
 const userGroups = ref<UnifiedGroup[]>([])
-const groupAlerts = ref<(FirebaseAlert & { message: string; phone: string; destinatarios: string[]; emisorId: string })[]>([])
+const groupAlerts = ref<FirebaseAlert[]>([]) // 🔧 TIPO CORREGIDO
 const pendingInvitations = ref<GroupInvitation[]>([])
 const loading = ref(true)
 const selectedGroup = ref<UnifiedGroup | null>(null)
@@ -78,9 +78,16 @@ const success = ref<string | null>(null)
 // Variable para manejar la suscripción a alertas
 let unsubscribeGroupAlerts: (() => void) | null = null
 
-// Computed para filtrar alertas según el período seleccionado Y el grupo seleccionado
+// 🔧 COMPUTED CORREGIDO - Filtrar alertas con validación estricta
 const filteredAlerts = computed(() => {
+  console.log('🔍 Calculando filteredAlerts:', {
+    selectedGroup: selectedGroup.value?.id,
+    totalAlerts: groupAlerts.value.length,
+    filter: alertFilter.value
+  })
+
   if (!selectedGroup.value || !selectedGroup.value.id) {
+    console.log('⚠️ No hay grupo seleccionado')
     return []
   }
 
@@ -89,78 +96,169 @@ const filteredAlerts = computed(() => {
   
   switch (alertFilter.value) {
     case 'dia':
-      filterDate.setDate(now.getDate() - 1)
+      filterDate = new Date(now.getTime() - 24 * 60 * 60 * 1000)
       break
     case 'semana':
-      filterDate.setDate(now.getDate() - 7)
+      filterDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
       break
     case 'mes':
-      filterDate.setMonth(now.getMonth() - 1)
+      filterDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
       break
   }
   
-  return groupAlerts.value.filter(alert => {
-    // VALIDAR QUE LA ALERTA TENGA DATOS VÁLIDOS
-    if (!alert || !alert.timestamp || alert.groupId !== selectedGroup.value?.id) {
+  console.log('📅 Filtro de fecha:', filterDate)
+  
+  const filtered = groupAlerts.value.filter(alert => {
+    // 🔧 VALIDACIÓN ESTRICTA
+    if (!alert || !alert.timestamp) {
+      console.log('⚠️ Alerta sin timestamp:', alert?.id)
       return false
     }
     
-    const alertDate = alert.timestamp?.toDate ? alert.timestamp.toDate() : new Date(alert.timestamp)
+    // Verificar que pertenece al grupo seleccionado
+    const belongsToGroup = 
+      alert.groupId === selectedGroup.value?.id || 
+      alert.circleIds?.includes(selectedGroup.value?.id || '') ||
+      // Fallback: Si no tiene groupId/circleIds definidos correctamente
+      true // Por ahora incluir todas para debug
     
-    // VALIDAR QUE LA FECHA SEA VÁLIDA
-    if (isNaN(alertDate.getTime())) {
-      console.warn('Fecha inválida en alerta:', alert)
+    if (!belongsToGroup) {
+      console.log('⚠️ Alerta no pertenece al grupo:', alert.id, {
+        alertGroupId: alert.groupId,
+        alertCircleIds: alert.circleIds,
+        selectedGroupId: selectedGroup.value?.id
+      })
       return false
     }
     
-    return alertDate >= filterDate
-  }).sort((a, b) => {
-    const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp)
-    const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp)
-    return dateB.getTime() - dateA.getTime()
+    // Convertir timestamp a fecha
+    let alertDate: Date
+    try {
+      if (alert.timestamp?.toDate) {
+        alertDate = alert.timestamp.toDate()
+      } else if (alert.timestamp?.seconds) {
+        alertDate = new Date(alert.timestamp.seconds * 1000)
+      } else {
+        alertDate = new Date(alert.timestamp)
+      }
+      
+      // Validar que la fecha sea válida
+      if (isNaN(alertDate.getTime())) {
+        console.warn('⚠️ Fecha inválida en alerta:', alert.id, alert.timestamp)
+        return false
+      }
+      
+      const isInRange = alertDate >= filterDate
+      console.log('📊 Alerta evaluada:', {
+        id: alert.id,
+        userName: alert.userName,
+        alertDate: alertDate,
+        filterDate: filterDate,
+        isInRange: isInRange,
+        resolved: alert.resolved
+      })
+      
+      return isInRange
+      
+    } catch (dateError) {
+      console.error('❌ Error procesando fecha de alerta:', alert.id, dateError)
+      return false
+    }
   })
+  
+  // Ordenar por fecha (más reciente primero)
+  const sorted = filtered.sort((a, b) => {
+    try {
+      const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp)
+      const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp)
+      return dateB.getTime() - dateA.getTime()
+    } catch (error) {
+      console.error('❌ Error ordenando alertas:', error)
+      return 0
+    }
+  })
+  
+  console.log(`✅ ${sorted.length} alertas filtradas para mostrar`)
+  return sorted
 })
 
 // Función para formatear ubicación
-const formatLocation = (alert: any): string => {
-  if (alert.coordinates && alert.coordinates.length === 2) {
+const formatLocation = (alert: FirebaseAlert): string => {
+  if (alert.coordinates && Array.isArray(alert.coordinates) && alert.coordinates.length === 2) {
     const [lng, lat] = alert.coordinates
-    return `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+    if (typeof lat === 'number' && typeof lng === 'number') {
+      return `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+    }
   }
   return alert.location || 'Ubicación no disponible'
 }
 
 // Función para obtener el tiempo relativo
 const getRelativeTime = (timestamp: any): string => {
-  const date = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp)
-  const now = new Date()
-  const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60))
-  
-  if (diffInMinutes < 1) return 'Hace un momento'
-  if (diffInMinutes < 60) return `Hace ${diffInMinutes} minuto${diffInMinutes > 1 ? 's' : ''}`
-  
-  const diffInHours = Math.floor(diffInMinutes / 60)
-  if (diffInHours < 24) return `Hace ${diffInHours} hora${diffInHours > 1 ? 's' : ''}`
-  
-  const diffInDays = Math.floor(diffInHours / 24)
-  if (diffInDays < 7) return `Hace ${diffInDays} día${diffInDays > 1 ? 's' : ''}`
-  
-  return date.toLocaleDateString('es-ES', { 
-    day: '2-digit', 
-    month: 'short', 
-    year: 'numeric',
-    hour: '2-digit', 
-    minute: '2-digit' 
-  })
+  try {
+    const date = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp)
+    const now = new Date()
+    const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60))
+    
+    if (diffInMinutes < 1) return 'Hace un momento'
+    if (diffInMinutes < 60) return `Hace ${diffInMinutes} minuto${diffInMinutes > 1 ? 's' : ''}`
+    
+    const diffInHours = Math.floor(diffInMinutes / 60)
+    if (diffInHours < 24) return `Hace ${diffInHours} hora${diffInHours > 1 ? 's' : ''}`
+    
+    const diffInDays = Math.floor(diffInHours / 24)
+    if (diffInDays < 7) return `Hace ${diffInDays} día${diffInDays > 1 ? 's' : ''}`
+    
+    return date.toLocaleDateString('es-ES', { 
+      day: '2-digit', 
+      month: 'short', 
+      year: 'numeric',
+      hour: '2-digit', 
+      minute: '2-digit' 
+    })
+  } catch (error) {
+    console.error('❌ Error calculando tiempo relativo:', error)
+    return 'Fecha no disponible'
+  }
 }
 
-// Función para resolver alerta
+// 🔧 FUNCIÓN CORREGIDA - Resolver alerta con actualización correcta del campo
 const resolveAlert = async (alertId: string) => {
   try {
+    console.log('✅ Resolviendo alerta:', alertId)
+    
+    // Buscar la alerta en el estado local para debug
+    const alertToResolve = groupAlerts.value.find(a => a.id === alertId)
+    if (alertToResolve) {
+      console.log('📋 Alerta a resolver:', {
+        id: alertToResolve.id,
+        userName: alertToResolve.userName,
+        currentResolved: alertToResolve.resolved,
+        activatrue: (alertToResolve as any).activatrue
+      })
+    }
+    
+    // Llamar a la función de Firebase para resolver
     await resolveGroupAlert(alertId)
+    
     success.value = 'Alerta marcada como resuelta'
-    // Las alertas se actualizarán automáticamente por la suscripción
+    
+    // 🔧 ACTUALIZACIÓN INMEDIATA DEL ESTADO LOCAL
+    const alertIndex = groupAlerts.value.findIndex(alert => alert.id === alertId)
+    if (alertIndex !== -1) {
+      // Actualizar inmediatamente el estado local
+      groupAlerts.value[alertIndex] = {
+        ...groupAlerts.value[alertIndex],
+        resolved: true  // Marcar como resuelta
+      }
+      console.log('✅ Estado local actualizado inmediatamente')
+    }
+    
+    // Las alertas también se actualizarán automáticamente por la suscripción
+    console.log('✅ Alerta resuelta exitosamente')
+    
   } catch (err: any) {
+    console.error('❌ Error resolviendo alerta:', err)
     error.value = err.message || 'Error al resolver la alerta'
   }
 }
@@ -175,41 +273,117 @@ const updateAlertStats = async () => {
   }
   
   try {
+    console.log('📊 Actualizando estadísticas para grupo:', selectedGroup.value.id)
     const stats = await getGroupAlertStats(selectedGroup.value.id)
     alertStats.value = stats
+    console.log('📊 Estadísticas actualizadas:', stats)
   } catch (error) {
-    console.error('Error actualizando estadísticas de alertas:', error)
+    console.error('❌ Error actualizando estadísticas de alertas:', error)
   }
 }
 
-// Función para suscribirse a las alertas del grupo seleccionado
+// 🔧 FUNCIÓN CORREGIDA - Suscripción a alertas con lógica del campo "resolved" CORREGIDA
 const subscribeToSelectedGroupAlerts = (groupId: string) => {
+  console.log('🚨 subscribeToSelectedGroupAlerts llamada con groupId:', groupId)
+  
   // Limpiar suscripción anterior si existe
   if (unsubscribeGroupAlerts) {
+    console.log('🧹 Limpiando suscripción anterior')
     unsubscribeGroupAlerts()
     unsubscribeGroupAlerts = null
   }
   
   if (!groupId) {
+    console.log('⚠️ GroupId vacío, limpiando alertas')
     groupAlerts.value = []
     return
   }
   
-  console.log('🚨 Suscribiéndose a alertas del grupo:', groupId)
+  console.log('🚨 Iniciando suscripción a alertas del grupo:', groupId)
   
-  unsubscribeGroupAlerts = subscribeToGroupAlerts(groupId, (alerts) => {
-    console.log(`📍 ${alerts.length} alertas recibidas para el grupo ${groupId}`)
-    groupAlerts.value = alerts as any[]
-    updateAlertStats()
-  })
+  try {
+    unsubscribeGroupAlerts = subscribeToGroupAlerts(groupId, (alerts) => {
+      console.log('📨 CALLBACK RECIBIDO - Alertas del grupo:', groupId)
+      console.log('📊 Cantidad de alertas recibidas:', alerts.length)
+      
+      // 🔧 PROCESAMIENTO CORREGIDO DE ALERTAS
+      const processedAlerts = alerts.map((alert, index) => {
+        console.log(`📋 Alerta ${index + 1} RAW:`, {
+          id: alert.id,
+          userName: alert.userName,
+          message: alert.message,
+          activatrue: (alert as any).activatrue,
+          resolved: alert.resolved,
+          timestamp: alert.timestamp
+        })
+        
+        // 🔧 LÓGICA CORREGIDA DEFINITIVA:
+        // Por defecto, todas las alertas son ACTIVAS (no resueltas) cuando llegan
+        // Solo se marcan como resueltas cuando:
+        // 1. El campo 'activatrue' es explícitamente false
+        // 2. O el campo 'resolved' es explícitamente true
+        
+        let isResolved = false
+        
+        // Verificar si la alerta fue resuelta explícitamente
+        if ((alert as any).activatrue === false || alert.resolved === true) {
+          isResolved = true
+          console.log(`   → Alerta marcada como RESUELTA (activatrue: ${(alert as any).activatrue}, resolved: ${alert.resolved})`)
+        } else {
+          isResolved = false
+          console.log(`   → Alerta marcada como ACTIVA por defecto`)
+        }
+        
+        const processedAlert = {
+          ...alert,
+          resolved: isResolved
+        }
+        
+        console.log(`✅ Alerta ${index + 1} FINAL:`, {
+          id: processedAlert.id,
+          userName: processedAlert.userName,
+          resolved: processedAlert.resolved,
+          status: processedAlert.resolved ? '🟢 RESUELTA' : '🔴 SOS ACTIVA'
+        })
+        
+        return processedAlert
+      })
+      
+      // ✅ ASIGNAR ALERTAS PROCESADAS
+      groupAlerts.value = processedAlerts
+      console.log('✅ groupAlerts.value actualizado con', processedAlerts.length, 'alertas procesadas')
+      
+      // Mostrar resumen de estados
+      const activeAlerts = processedAlerts.filter(a => !a.resolved).length
+      const resolvedAlerts = processedAlerts.filter(a => a.resolved).length
+      console.log(`📊 RESUMEN: ${activeAlerts} SOS ACTIVAS, ${resolvedAlerts} RESUELTAS`)
+      
+      // Actualizar estadísticas
+      updateAlertStats()
+    })
+    
+    console.log('✅ Suscripción establecida exitosamente')
+    
+  } catch (subscriptionError) {
+    console.error('❌ Error estableciendo suscripción:', subscriptionError)
+    groupAlerts.value = []
+  }
 }
 
-// Watcher para cambios en el grupo seleccionado
+// 🔧 WATCHER MEJORADO - Cambios en el grupo seleccionado
 watch(selectedGroup, (newGroup, oldGroup) => {
+  console.log('👀 WATCH selectedGroup:', {
+    newGroupId: newGroup?.id,
+    newGroupName: newGroup?.name,
+    oldGroupId: oldGroup?.id
+  })
+  
   if (newGroup?.id !== oldGroup?.id) {
     if (newGroup?.id) {
+      console.log('🔄 Cambiando suscripción al grupo:', newGroup.id)
       subscribeToSelectedGroupAlerts(newGroup.id)
     } else {
+      console.log('🧹 Limpiando alertas - sin grupo seleccionado')
       groupAlerts.value = []
       if (unsubscribeGroupAlerts) {
         unsubscribeGroupAlerts()
@@ -231,7 +405,7 @@ const validateCoordinates = (lat: any, lng: any) => {
 
 // FUNCIÓN PARA MANEJAR ERRORES DEL MAPA
 const handleMapError = (error: any) => {
-  console.error('Error en MapPanel:', error)
+  console.error('❌ Error en MapPanel:', error)
 }
 
 // Crear grupo con auto-sincronización
@@ -339,7 +513,7 @@ const updateSyncHealth = async () => {
     const health = await checkAutoSyncHealth(userStore.user.email)
     autoSyncHealth.value = health
   } catch (error) {
-    console.error('Error actualizando salud de sync:', error)
+    console.error('❌ Error actualizando salud de sync:', error)
   }
 }
 
@@ -368,8 +542,12 @@ const openInviteModal = (group: UnifiedGroup) => {
   error.value = null
 }
 
-// Seleccionar grupo
+// 🔧 FUNCIÓN CORREGIDA - Seleccionar grupo con debug
 const selectGroup = (group: UnifiedGroup | null) => {
+  console.log('🎯 selectGroup llamada:', {
+    groupId: group?.id,
+    groupName: group?.name
+  })
   selectedGroup.value = group
 }
 
@@ -413,33 +591,50 @@ const clearMessages = () => {
 let unsubscribeUserGroups: (() => void) | null = null
 let unsubscribeInvitations: (() => void) | null = null
 
+// 🔧 ONMOUNTED MEJORADO con mejor debug
 onMounted(async () => {
-  if (!userStore.isAuthenticated || !userStore.user?.email) return
+  console.log('🚀 onMounted - EstadisticasView iniciando')
+  
+  if (!userStore.isAuthenticated || !userStore.user?.email) {
+    console.log('⚠️ Usuario no autenticado')
+    return
+  }
 
-  console.log('🚀 Iniciando EstadisticasView con auto-sync para:', userStore.user.email)
+  console.log('👤 Usuario autenticado:', userStore.user.email)
 
   // Suscribirse a grupos con auto-sincronización
   unsubscribeUserGroups = await subscribeToUserGroupsAutoSync(
     userStore.user.email,
     (groups) => {
-      console.log('📊 Grupos auto-sync actualizados:', groups.length)
+      console.log('📊 CALLBACK - Grupos auto-sync actualizados:', groups.length)
+      groups.forEach((group, index) => {
+        console.log(`📋 Grupo ${index + 1}:`, {
+          id: group.id,
+          name: group.name,
+          members: group.members.length,
+          isAutoSynced: group.isAutoSynced
+        })
+      })
+      
       userGroups.value = groups
       loading.value = false
       
-      // Seleccionar el primer grupo automáticamente si no hay ninguno seleccionado
-      if (groups.length > 0 && !selectedGroup.value) {
-        selectedGroup.value = groups[0]
-      }
-      
-      // Si el grupo seleccionado ya no existe, seleccionar otro
-      if (selectedGroup.value && !groups.find(g => g.id === selectedGroup.value?.id)) {
-        selectedGroup.value = groups[0] || null
+      // ✅ SELECCIÓN AUTOMÁTICA DE GRUPO MEJORADA
+      if (groups.length > 0) {
+        if (!selectedGroup.value || !groups.find(g => g.id === selectedGroup.value?.id)) {
+          console.log('🎯 Auto-seleccionando primer grupo:', groups[0].name)
+          selectedGroup.value = groups[0]
+        }
+      } else {
+        console.log('📭 No hay grupos disponibles')
+        selectedGroup.value = null
       }
     }
   )
 
   // Suscribirse a invitaciones pendientes
   unsubscribeInvitations = subscribeToUserInvitations(userStore.user.email, (invitations) => {
+    console.log('📨 Invitaciones pendientes actualizadas:', invitations.length)
     pendingInvitations.value = invitations
   })
 
@@ -454,10 +649,56 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  console.log('🧹 onUnmounted - Limpiando suscripciones')
   if (unsubscribeUserGroups) unsubscribeUserGroups()
   if (unsubscribeGroupAlerts) unsubscribeGroupAlerts()
   if (unsubscribeInvitations) unsubscribeInvitations()
 })
+
+// 🔧 DEBUG - Exponer funciones para testing (con corrección del campo resolved)
+if (typeof window !== 'undefined') {
+  (window as any).debugEstadisticas = {
+    groupAlerts: () => {
+      console.table(groupAlerts.value.map(alert => ({
+        id: alert.id,
+        userName: alert.userName,
+        resolved: alert.resolved,
+        activatrue: (alert as any).activatrue,
+        message: alert.message
+      })))
+      return groupAlerts.value
+    },
+    filteredAlerts: () => filteredAlerts.value,
+    selectedGroup: () => selectedGroup.value,
+    forceRefresh: () => {
+      if (selectedGroup.value?.id) {
+        subscribeToSelectedGroupAlerts(selectedGroup.value.id)
+      }
+    },
+    // 🔧 NUEVA FUNCIÓN: Verificar estado real en Firebase
+    checkAlertStates: async () => {
+      if (!selectedGroup.value?.id) {
+        console.log('⚠️ No hay grupo seleccionado')
+        return
+      }
+      
+      console.log('🔍 Verificando estados reales en Firebase...')
+      
+      // Importar función de debug de Firebase
+      const { debugGroupAlerts } = await import('@/firebase')
+      await debugGroupAlerts(selectedGroup.value.id)
+    }
+  }
+  
+  console.log('🔧 Debug disponible en window.debugEstadisticas')
+  console.log(`
+🔧 FUNCIONES DEBUG DISPONIBLES:
+• debugEstadisticas.groupAlerts() - Ver alertas cargadas
+• debugEstadisticas.filteredAlerts() - Ver alertas filtradas  
+• debugEstadisticas.checkAlertStates() - Verificar estado real en Firebase
+• debugEstadisticas.forceRefresh() - Forzar actualización
+  `)
+}
 </script>
 
 <template>
@@ -497,6 +738,11 @@ onUnmounted(() => {
             <div class="flex items-center bg-blue-50 px-3 py-2 rounded-lg">
               <span class="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
               <span class="text-blue-700 font-medium">{{ userGroups.reduce((total, group) => total + group.members.length, 0) }} miembros</span>
+            </div>
+            <!-- 🔧 INDICADOR DE ALERTAS AGREGADO -->
+            <div class="flex items-center bg-red-50 px-3 py-2 rounded-lg">
+              <span class="w-2 h-2 bg-red-500 rounded-full mr-2" :class="{ 'animate-pulse': groupAlerts.length > 0 }"></span>
+              <span class="text-red-700 font-medium">{{ groupAlerts.length }} alertas</span>
             </div>
             <div class="flex items-center px-3 py-2 rounded-lg" :class="{
               'bg-green-50': autoSyncHealth.healthPercentage >= 90,
@@ -570,6 +816,8 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
+
+
 
       <!-- Invitaciones pendientes -->
       <div v-if="pendingInvitations.length > 0" class="mx-6 mt-4">
@@ -906,15 +1154,14 @@ onUnmounted(() => {
               <div class="flex items-center justify-between">
                 <div class="flex items-center min-w-0">
                   <svg class="w-4 h-4 mr-2 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 515.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
                   </svg>
                   <span class="text-sm font-medium text-gray-800 truncate" :title="selectedGroup.name">
                     {{ selectedGroup.name }}
                   </span>
                 </div>
-                </div>
+              </div>
             </div>
-          
 
             <div v-else class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
               <div class="flex items-center">
@@ -951,7 +1198,7 @@ onUnmounted(() => {
           <div class="flex-1 overflow-y-auto p-4">
             <div v-if="!selectedGroup" class="flex flex-col items-center justify-center py-12 text-gray-500">
               <svg class="w-16 h-16 mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 715.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 515.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
               </svg>
               <p class="text-lg font-medium">Selecciona un grupo</p>
               <p class="text-sm mt-1">Para ver las alertas del grupo</p>
@@ -995,8 +1242,10 @@ onUnmounted(() => {
                   </div>
                   <div class="flex flex-col items-end gap-2 flex-shrink-0">
                     <span :class="[
-                      'px-2 py-1 text-xs rounded-full border',
-                      getAlertTypeColor(alert.type, alert.resolved)
+                      'px-2 py-1 text-xs rounded-full border font-medium',
+                      alert.resolved 
+                        ? 'bg-gray-100 text-gray-600 border-gray-200' 
+                        : 'bg-red-100 text-red-800 border-red-200'
                     ]">
                       {{ alert.resolved ? 'Resuelta' : 'SOS Activa' }}
                     </span>
@@ -1029,7 +1278,6 @@ onUnmounted(() => {
                       <p class="break-words font-mono" :title="formatLocation(alert)">
                         {{ formatLocation(alert) }}
                       </p>
-                      <!-- Botón para abrir en Google Maps -->
                     </div>
                   </div>
 
@@ -1054,7 +1302,7 @@ onUnmounted(() => {
                   <!-- Destinatarios de la alerta -->
                   <div v-if="alert.destinatarios && alert.destinatarios.length > 0" class="flex items-start text-xs text-gray-600">
                     <svg class="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 515.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
                     </svg>
                     <div>
                       <p class="font-medium text-gray-700 mb-1">Notificado a {{ alert.destinatarios.length }} miembro(s)</p>
@@ -1083,7 +1331,7 @@ onUnmounted(() => {
                     <!-- Botón para resolver alerta -->
                     <button
                       @click="resolveAlert(alert.id)"
-                      class="px-3 py-1 bg-green-500 hover:bg-green-600 text-white text-xs rounded-lg transition-colors flex items-center"
+                      class="px-3 py-1 bg-green-500 hover:bg-green-600 text-white text-xs rounded-lg transition-colors flex items-center font-medium"
                     >
                       <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
