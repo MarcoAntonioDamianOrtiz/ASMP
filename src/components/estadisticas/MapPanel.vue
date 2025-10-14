@@ -1143,7 +1143,7 @@ watch(() => relevantLocations.value, (newLocations, oldLocations) => {
               
               <!-- Información de ubicación expandible -->
               <div v-if="getMemberLocationStatus(memberEmail).hasLocation" 
-                   class="px-3 pb-3 border-t border-white border-opacity-50">
+                  class="px-3 pb-3 border-t border-white border-opacity-50">
                 <div class="bg-white rounded-md p-2 mt-2 text-xs space-y-1">
                   <div class="flex items-center justify-between">
                     <span class="text-gray-600">Estado:</span>
