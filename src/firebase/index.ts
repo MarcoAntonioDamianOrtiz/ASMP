@@ -36,7 +36,6 @@ export {
   getGroupAlerts,
   subscribeToGroupAlerts,
   resolveGroupAlert,
-  createTestAlert,
   getGroupAlertStats
 } from './alerts';
 

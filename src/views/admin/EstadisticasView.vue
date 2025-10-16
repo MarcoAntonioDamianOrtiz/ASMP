@@ -6,7 +6,7 @@ import {
   inviteToGroup,
   resolveGroupAlert,
   subscribeToGroupAlerts,
-  getUserGroupsAlerts,
+  getGroupAlerts,
   getGroupAlertStats,
   type FirebaseAlert,
   type GroupInvitation 
