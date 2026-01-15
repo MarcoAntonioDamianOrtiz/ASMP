@@ -39,6 +39,10 @@ export interface FirebaseUbicacion {
     isOnline: boolean;
 }
 
+// ========== CONSTANTES DE PRECISIÓN ==========
+const MAX_ACCURACY_METERS = 50; // SOLO ACEPTAR UBICACIONES CON MENOS DE 50 METROS DE PRECISIÓN
+const WARNING_ACCURACY_METERS = 30; // Advertencia si está entre 30-50 metros
+
 // ========== OBTENER USUARIOS ==========
 export const getUsers = async (): Promise<FirebaseUser[]> => {
     try {
@@ -112,26 +116,51 @@ export const updateUserStatus = async (
     }
 };
 
-// ========== UBICACIONES ==========
+// ========== UBICACIONES CON VALIDACIÓN DE PRECISIÓN ==========
 export const updateUserLocation = async (userEmail: string, locationData: {
     lat: number;
     lng: number;
     accuracy?: number;
 }): Promise<void> => {
     try {
-        // Validar coordenadas
+        console.log('📍 Intentando actualizar ubicación:', {
+            email: userEmail,
+            lat: locationData.lat,
+            lng: locationData.lng,
+            accuracy: locationData.accuracy
+        });
+
+        // ========== VALIDACIÓN 1: COORDENADAS BÁSICAS ==========
         if (!locationData.lat || !locationData.lng ||
             Math.abs(locationData.lat) > 90 || Math.abs(locationData.lng) > 180) {
-            return;
+            console.warn('⚠️ Coordenadas inválidas:', locationData.lat, locationData.lng);
+            throw new Error('Coordenadas GPS inválidas');
         }
 
-        // ⚠️ RECHAZAR UBICACIONES IMPRECISAS (más de 100 metros)
-        const MAX_ACCURACY = 100; // metros
-        if (locationData.accuracy && locationData.accuracy > MAX_ACCURACY) {
-            console.warn(`Ubicación rechazada por baja precisión: ${locationData.accuracy}m`);
-            throw new Error(`Precisión insuficiente: ${locationData.accuracy}m. Se requiere menos de ${MAX_ACCURACY}m`);
+        // ========== VALIDACIÓN 2: PRECISIÓN ESTRICTA ==========
+        if (!locationData.accuracy) {
+            console.warn('⚠️ Sin dato de precisión GPS');
+            throw new Error('No se proporcionó precisión GPS');
         }
 
+        // 🚫 RECHAZAR SI LA PRECISIÓN ES MAYOR A 50 METROS
+        if (locationData.accuracy > MAX_ACCURACY_METERS) {
+            console.error(`🚫 UBICACIÓN RECHAZADA: Precisión insuficiente (${Math.round(locationData.accuracy)}m > ${MAX_ACCURACY_METERS}m)`);
+            throw new Error(
+                `Precisión GPS insuficiente: ${Math.round(locationData.accuracy)}m. ` +
+                `Se requiere una precisión menor a ${MAX_ACCURACY_METERS}m. ` +
+                `Por favor, espera a que el GPS obtenga una señal más precisa (mueve tu dispositivo a un lugar con mejor señal).`
+            );
+        }
+
+        // ⚠️ ADVERTENCIA si está entre 30-50 metros
+        if (locationData.accuracy > WARNING_ACCURACY_METERS) {
+            console.warn(`⚠️ Precisión aceptable pero baja: ${Math.round(locationData.accuracy)}m`);
+        } else {
+            console.log(`✅ Precisión excelente: ${Math.round(locationData.accuracy)}m`);
+        }
+
+        // ========== BUSCAR USUARIO ==========
         const userQuery = query(collection(db, 'users'), where('email', '==', userEmail));
         const userSnapshot = await getDocs(userQuery);
 
@@ -143,6 +172,7 @@ export const updateUserLocation = async (userEmail: string, locationData: {
         const userId = userDoc.id;
         const userData = userDoc.data();
 
+        // ========== GUARDAR UBICACIÓN PRECISA ==========
         const locationRef = doc(db, 'ubicaciones', userId);
 
         const locationDoc = {
@@ -151,15 +181,30 @@ export const updateUserLocation = async (userEmail: string, locationData: {
             userName: userData.name || userEmail.split('@')[0],
             lat: Number(locationData.lat),
             lng: Number(locationData.lng),
-            accuracy: locationData.accuracy || 0,
+            accuracy: Math.round(locationData.accuracy), // Redondear para mejor legibilidad
             timestamp: new Date(),
             isOnline: true,
-            lastUpdate: new Date()
+            lastUpdate: new Date(),
+            // Agregar metadatos útiles
+            precisionLevel: locationData.accuracy <= 10 ? 'excelente' :
+                           locationData.accuracy <= 20 ? 'buena' :
+                           locationData.accuracy <= 30 ? 'aceptable' : 'baja'
         };
 
         await setDoc(locationRef, locationDoc, { merge: true });
-    } catch (error) {
-        console.error('Error updating user location:', error);
+
+        console.log('✅ Ubicación GPS actualizada exitosamente:', {
+            userId: userId,
+            email: userEmail,
+            coords: `${locationData.lat.toFixed(6)}, ${locationData.lng.toFixed(6)}`,
+            accuracy: `${Math.round(locationData.accuracy)}m`,
+            level: locationDoc.precisionLevel
+        });
+
+    } catch (error: any) {
+        console.error('❌ Error al actualizar ubicación GPS:', error);
+        
+        // Re-lanzar el error para que el componente lo maneje
         throw error;
     }
 };

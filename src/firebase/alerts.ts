@@ -22,16 +22,33 @@ export interface FirebaseAlert {
     location: string;
     coordinates?: [number, number];
     timestamp: any;
-    type: 'panic' | 'geofence' | 'manual';
+    type: 'panic' | 'geofence' | 'manual' | 'smartwatch';
     resolved: boolean;
     groupId?: string;
     message?: string;
     phone?: string;
     destinatarios?: string[];
     emisorId?: string;
+    source?: 'circle' | 'smartwatch'; // Identificar origen
 }
 
-// ========== OBTENER ALERTAS DE GRUPO ==========
+// ========== NUEVA: INTERFAZ PARA ALERTAS DE SMARTWATCH ==========
+export interface FirebaseSmartWatchAlert {
+    id: string;
+    userId: string;
+    userEmail: string;
+    userName: string;
+    location?: string;
+    coordinates?: { lat: number, lng: number };
+    timestamp: any;
+    type: 'sos' | 'fall' | 'heartrate' | 'other';
+    resolved: boolean;
+    message?: string;
+    deviceId?: string;
+    metadata?: any;
+}
+
+// ========== OBTENER ALERTAS DE GRUPO (ORIGINAL) ==========
 export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> => {
     try {
         if (!groupId) return [];
@@ -69,7 +86,8 @@ export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> 
                             message: data.mensaje || data.message || '',
                             phone: data.phone || '',
                             destinatarios: data.destinatarios || [],
-                            emisorId: data.emisorId || data.userId || ''
+                            emisorId: data.emisorId || data.userId || '',
+                            source: 'circle'
                         } as FirebaseAlert;
                     });
 
@@ -93,52 +111,215 @@ export const getGroupAlerts = async (groupId: string): Promise<FirebaseAlert[]> 
 
     } catch (error) {
         console.error('Error getting group alerts:', error);
+        return [];
+    }
+};
 
-        try {
-            const fallbackQuery = query(
-                collection(db, 'alertasCirculos'),
-                where('circleIds', 'array-contains', groupId)
-            );
+// ========== NUEVA: OBTENER ALERTAS DE SMARTWATCH ==========
+export const getSmartWatchAlerts = async (): Promise<FirebaseAlert[]> => {
+    try {
+        console.log('📱 Obteniendo alertas de smartwatch...');
+        
+        const snapshot = await getDocs(collection(db, 'alertas'));
+        
+        console.log(`📊 ${snapshot.docs.length} alertas de smartwatch encontradas`);
+        
+        const alerts = snapshot.docs.map(doc => {
+            const data = doc.data();
+            
+            return {
+                id: doc.id,
+                userId: data.userId || data.uid || '',
+                userEmail: data.userEmail || data.email || 'desconocido@email.com',
+                userName: data.userName || data.name || 'Usuario Smartwatch',
+                location: data.coordinates ? 
+                    `${data.coordinates.lat.toFixed(6)}, ${data.coordinates.lng.toFixed(6)}` : 
+                    data.location || 'Ubicación no disponible',
+                coordinates: data.coordinates ? 
+                    [data.coordinates.lng, data.coordinates.lat] : 
+                    undefined,
+                timestamp: data.timestamp || data.createdAt,
+                type: 'smartwatch' as const,
+                resolved: data.resolved || false,
+                message: data.message || data.type || 'Alerta de smartwatch',
+                source: 'smartwatch',
+                // Metadata adicional
+                deviceId: data.deviceId,
+                metadata: data.metadata
+            } as FirebaseAlert;
+        });
 
-            const snapshot = await getDocs(fallbackQuery);
+        // Ordenar por fecha
+        return alerts.sort((a, b) => {
+            const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp);
+            const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp);
+            return dateB.getTime() - dateA.getTime();
+        });
 
-            const fallbackAlerts = snapshot.docs.map(doc => {
-                const data = doc.data();
-                return {
-                    id: doc.id,
-                    userId: data.emisorId || data.userId || '',
-                    userEmail: data.email || data.userEmail || '',
-                    userName: data.name || data.userName || 'Usuario desconocido',
-                    location: data.ubicacion ?
-                        `${data.ubicacion.lat.toFixed(6)}, ${data.ubicacion.lng.toFixed(6)}` :
-                        data.location || 'Ubicación no disponible',
-                    coordinates: data.ubicacion ?
-                        [data.ubicacion.lng, data.ubicacion.lat] :
-                        data.coordinates || undefined,
-                    timestamp: data.timestamp,
-                    type: data.type || 'panic' as const,
-                    resolved: !data.activatrue,
-                    groupId: data.circleIds?.[0] || data.circleId || data.groupId || groupId,
-                    message: data.mensaje || data.message || '',
-                    phone: data.phone || '',
-                    destinatarios: data.destinatarios || [],
-                    emisorId: data.emisorId || data.userId || ''
-                } as FirebaseAlert;
-            });
+    } catch (error) {
+        console.error('❌ Error obteniendo alertas de smartwatch:', error);
+        return [];
+    }
+};
 
-            return fallbackAlerts.sort((a, b) => {
+// ========== NUEVA: OBTENER TODAS LAS ALERTAS (CÍRCULOS + SMARTWATCH) ==========
+export const getAllUserAlerts = async (userEmail: string): Promise<FirebaseAlert[]> => {
+    try {
+        console.log('🔍 Obteniendo TODAS las alertas para:', userEmail);
+        
+        // 1. Obtener alertas de círculos
+        const { getUserGroups } = await import('./groups');
+        const userGroups = await getUserGroups(userEmail);
+        
+        const circleAlerts: FirebaseAlert[] = [];
+        for (const group of userGroups) {
+            try {
+                const groupAlerts = await getGroupAlerts(group.id);
+                circleAlerts.push(...groupAlerts);
+            } catch (error) {
+                console.error(`Error obteniendo alertas del grupo ${group.id}:`, error);
+            }
+        }
+        
+        console.log(`📱 ${circleAlerts.length} alertas de círculos`);
+        
+        // 2. Obtener alertas de smartwatch
+        const smartwatchAlerts = await getSmartWatchAlerts();
+        console.log(`⌚ ${smartwatchAlerts.length} alertas de smartwatch`);
+        
+        // 3. Combinar todas las alertas
+        const allAlerts = [...circleAlerts, ...smartwatchAlerts];
+        
+        // 4. Eliminar duplicados por ID
+        const uniqueAlerts = allAlerts
+            .filter((alert, index, self) => index === self.findIndex(a => a.id === alert.id))
+            .sort((a, b) => {
                 const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp);
                 const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp);
                 return dateB.getTime() - dateA.getTime();
             });
-
-        } catch (fallbackError) {
-            return [];
-        }
+        
+        console.log(`✅ Total: ${uniqueAlerts.length} alertas únicas`);
+        
+        return uniqueAlerts;
+        
+    } catch (error) {
+        console.error('❌ Error obteniendo todas las alertas:', error);
+        return [];
     }
 };
 
-// ========== SUSCRIPCIÓN A ALERTAS EN TIEMPO REAL ==========
+// ========== NUEVA: SUSCRIPCIÓN A TODAS LAS ALERTAS EN TIEMPO REAL ==========
+export const subscribeToAllUserAlerts = (
+    userEmail: string,
+    callback: (alerts: FirebaseAlert[]) => void
+) => {
+    console.log('🔄 Iniciando suscripción a TODAS las alertas para:', userEmail);
+    
+    let circleAlertsCache: FirebaseAlert[] = [];
+    let smartwatchAlertsCache: FirebaseAlert[] = [];
+    let isActive = true;
+    
+    const combineAndSend = () => {
+        if (!isActive) return;
+        
+        const allAlerts = [...circleAlertsCache, ...smartwatchAlertsCache];
+        const uniqueAlerts = allAlerts
+            .filter((alert, index, self) => index === self.findIndex(a => a.id === alert.id))
+            .sort((a, b) => {
+                const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp);
+                const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp);
+                return dateB.getTime() - dateA.getTime();
+            });
+        
+        console.log(`📊 Enviando ${uniqueAlerts.length} alertas combinadas (${circleAlertsCache.length} círculos + ${smartwatchAlertsCache.length} smartwatch)`);
+        callback(uniqueAlerts);
+    };
+    
+    // Suscripción a alertas de smartwatch
+    const unsubscribeSmartwatch = onSnapshot(
+        collection(db, 'alertas'),
+        (snapshot) => {
+            console.log(`⌚ Cambios en smartwatch: ${snapshot.docs.length} documentos`);
+            
+            smartwatchAlertsCache = snapshot.docs.map(doc => {
+                const data = doc.data();
+                
+                return {
+                    id: doc.id,
+                    userId: data.userId || data.uid || '',
+                    userEmail: data.userEmail || data.email || 'desconocido@email.com',
+                    userName: data.userName || data.name || 'Usuario Smartwatch',
+                    location: data.coordinates ? 
+                        `${data.coordinates.lat.toFixed(6)}, ${data.coordinates.lng.toFixed(6)}` : 
+                        data.location || 'Ubicación no disponible',
+                    coordinates: data.coordinates ? 
+                        [data.coordinates.lng, data.coordinates.lat] : 
+                        undefined,
+                    timestamp: data.timestamp || data.createdAt,
+                    type: 'smartwatch' as const,
+                    resolved: data.resolved || false,
+                    message: data.message || data.type || 'Alerta de smartwatch',
+                    source: 'smartwatch',
+                    deviceId: data.deviceId,
+                    metadata: data.metadata
+                } as FirebaseAlert;
+            });
+            
+            combineAndSend();
+        },
+        (error) => {
+            console.error('❌ Error en suscripción smartwatch:', error);
+        }
+    );
+    
+    // Suscripción a alertas de círculos
+    const setupCircleSubscription = async () => {
+        try {
+            const { getUserGroups } = await import('./groups');
+            const userGroups = await getUserGroups(userEmail);
+            
+            console.log(`📱 Suscribiéndose a ${userGroups.length} grupos`);
+            
+            const unsubscribeCircles: (() => void)[] = [];
+            
+            for (const group of userGroups) {
+                const unsubGroup = subscribeToGroupAlerts(group.id, (groupAlerts) => {
+                    // Actualizar cache con alertas de este grupo
+                    circleAlertsCache = circleAlertsCache.filter(a => a.groupId !== group.id);
+                    circleAlertsCache.push(...groupAlerts);
+                    
+                    combineAndSend();
+                });
+                
+                unsubscribeCircles.push(unsubGroup);
+            }
+            
+            return () => {
+                unsubscribeCircles.forEach(unsub => unsub());
+            };
+            
+        } catch (error) {
+            console.error('❌ Error configurando suscripción círculos:', error);
+            return () => {};
+        }
+    };
+    
+    let unsubscribeCircles: (() => void) | null = null;
+    setupCircleSubscription().then(unsub => {
+        unsubscribeCircles = unsub;
+    });
+    
+    // Retornar función de limpieza
+    return () => {
+        console.log('🧹 Limpiando suscripciones de alertas');
+        isActive = false;
+        unsubscribeSmartwatch();
+        if (unsubscribeCircles) unsubscribeCircles();
+    };
+};
+
+// ========== SUSCRIPCIÓN A ALERTAS EN TIEMPO REAL (CÍRCULOS) ==========
 export const subscribeToGroupAlerts = (
     groupId: string,
     callback: (alerts: FirebaseAlert[]) => void
@@ -209,7 +390,8 @@ const processAlertsSnapshot = (
             message: data.mensaje || data.message || '',
             phone: data.phone || '',
             destinatarios: data.destinatarios || [],
-            emisorId: data.emisorId || data.userId || ''
+            emisorId: data.emisorId || data.userId || '',
+            source: 'circle'
         } as FirebaseAlert;
     }).filter((alert: any) => alert !== null) as FirebaseAlert[];
 
@@ -267,7 +449,8 @@ const processAndSortAlerts = (snapshot: any, groupId: string): FirebaseAlert[] =
             message: data.mensaje || data.message || '',
             phone: data.phone || '',
             destinatarios: data.destinatarios || [],
-            emisorId: data.emisorId || data.userId || ''
+            emisorId: data.emisorId || data.userId || '',
+            source: 'circle'
         } as FirebaseAlert;
     }).filter((alert: any) => alert !== null).sort((a: FirebaseAlert, b: FirebaseAlert) => {
         const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp);
@@ -296,6 +479,35 @@ export const resolveGroupAlert = async (alertId: string): Promise<void> => {
     } catch (error) {
         console.error('Error resolving alert:', error);
         throw error;
+    }
+};
+
+// ========== NUEVA: RESOLVER ALERTA DE SMARTWATCH ==========
+export const resolveSmartWatchAlert = async (alertId: string): Promise<void> => {
+    try {
+        const alertRef = doc(db, 'alertas', alertId);
+        const alertDoc = await getDoc(alertRef);
+
+        if (!alertDoc.exists()) {
+            throw new Error('La alerta no existe');
+        }
+
+        await updateDoc(alertRef, {
+            resolved: true,
+            resolvedAt: new Date()
+        });
+    } catch (error) {
+        console.error('Error resolving smartwatch alert:', error);
+        throw error;
+    }
+};
+
+// ========== NUEVA: RESOLVER CUALQUIER TIPO DE ALERTA ==========
+export const resolveAlert = async (alertId: string, source: 'circle' | 'smartwatch'): Promise<void> => {
+    if (source === 'smartwatch') {
+        await resolveSmartWatchAlert(alertId);
+    } else {
+        await resolveGroupAlert(alertId);
     }
 };
 
@@ -378,19 +590,6 @@ export const getAlerts = async (): Promise<FirebaseAlert[]> => {
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FirebaseAlert));
     } catch (error) {
         return [];
-    }
-};
-
-export const resolveAlert = async (alertId: string): Promise<void> => {
-    try {
-        const alertRef = doc(db, 'alerts', alertId);
-        await updateDoc(alertRef, {
-            resolved: true,
-            resolvedAt: new Date()
-        });
-    } catch (error) {
-        console.error('Error resolving alert:', error);
-        throw error;
     }
 };
 

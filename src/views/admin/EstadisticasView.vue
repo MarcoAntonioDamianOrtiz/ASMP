@@ -1,18 +1,17 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
-import { 
+import {
   respondToInvitation,
   subscribeToUserInvitations,
   inviteToGroup,
-  resolveGroupAlert,
-  subscribeToGroupAlerts,
-  getGroupAlerts,
-  getGroupAlertStats,
+  // IMPORTAR LAS NUEVAS FUNCIONES
+  getAllUserAlerts,
+  subscribeToAllUserAlerts,
+  resolveAlert,
   type FirebaseAlert,
-  type GroupInvitation 
+  type GroupInvitation
 } from '@/firebase'
 
-// IMPORTAR SISTEMA AUTO-SYNC
 import {
   createAutoSyncGroup,
   subscribeToUserGroupsAutoSync,
@@ -29,13 +28,12 @@ import { useUserStore } from '@/stores/user'
 
 const userStore = useUserStore()
 const userGroups = ref<UnifiedGroup[]>([])
-const groupAlerts = ref<FirebaseAlert[]>([])
+const groupAlerts = ref<FirebaseAlert[]>([]) // AHORA CONTIENE TODAS LAS ALERTAS
 const pendingInvitations = ref<GroupInvitation[]>([])
 const loading = ref(true)
 const selectedGroup = ref<UnifiedGroup | null>(null)
 const alertFilter = ref<'dia' | 'semana' | 'mes'>('dia')
 
-// Estados para estadísticas de alertas
 const alertStats = ref({
   total: 0,
   active: 0,
@@ -45,12 +43,10 @@ const alertStats = ref({
   thisMonth: 0
 })
 
-// Estados para crear grupo
 const showCreateGroup = ref(false)
 const showInviteModal = ref(false)
 const selectedGroupForInvite = ref<UnifiedGroup | null>(null)
 
-// Estado de auto-sincronización
 const autoSyncHealth = ref({
   totalGroups: 0,
   syncedGroups: 0,
@@ -61,7 +57,6 @@ const autoSyncHealth = ref({
 const migrating = ref(false)
 const migrationResult = ref<any>(null)
 
-// Formularios
 const newGroup = ref({
   name: '',
   description: ''
@@ -75,25 +70,14 @@ const inviteForm = ref({
 const error = ref<string | null>(null)
 const success = ref<string | null>(null)
 
-// Variable para manejar la suscripción a alertas
-let unsubscribeGroupAlerts: (() => void) | null = null
+// Variable para manejar la suscripción a TODAS las alertas
+let unsubscribeAllAlerts: (() => void) | null = null
 
-// 🔧 COMPUTED CORREGIDO - Filtrar alertas con validación estricta
+// COMPUTED - Filtrar alertas
 const filteredAlerts = computed(() => {
-  console.log('🔍 Calculando filteredAlerts:', {
-    selectedGroup: selectedGroup.value?.id,
-    totalAlerts: groupAlerts.value.length,
-    filter: alertFilter.value
-  })
-
-  if (!selectedGroup.value || !selectedGroup.value.id) {
-    console.log('⚠️ No hay grupo seleccionado')
-    return []
-  }
-
   const now = new Date()
   let filterDate = new Date()
-  
+
   switch (alertFilter.value) {
     case 'dia':
       filterDate = new Date(now.getTime() - 24 * 60 * 60 * 1000)
@@ -105,33 +89,10 @@ const filteredAlerts = computed(() => {
       filterDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
       break
   }
-  
-  console.log('📅 Filtro de fecha:', filterDate)
-  
+
   const filtered = groupAlerts.value.filter(alert => {
-    // 🔧 VALIDACIÓN ESTRICTA
-    if (!alert || !alert.timestamp) {
-      console.log('⚠️ Alerta sin timestamp:', alert?.id)
-      return false
-    }
-    
-    // Verificar que pertenece al grupo seleccionado
-    const belongsToGroup = 
-      alert.groupId === selectedGroup.value?.id || 
-      alert.circleIds?.includes(selectedGroup.value?.id || '') ||
-      // Fallback: Si no tiene groupId/circleIds definidos correctamente
-      true // Por ahora incluir todas para debug
-    
-    if (!belongsToGroup) {
-      console.log('⚠️ Alerta no pertenece al grupo:', alert.id, {
-        alertGroupId: alert.groupId,
-        alertCircleIds: alert.circleIds,
-        selectedGroupId: selectedGroup.value?.id
-      })
-      return false
-    }
-    
-    // Convertir timestamp a fecha
+    if (!alert || !alert.timestamp) return false
+
     let alertDate: Date
     try {
       if (alert.timestamp?.toDate) {
@@ -141,48 +102,28 @@ const filteredAlerts = computed(() => {
       } else {
         alertDate = new Date(alert.timestamp)
       }
-      
-      // Validar que la fecha sea válida
-      if (isNaN(alertDate.getTime())) {
-        console.warn('⚠️ Fecha inválida en alerta:', alert.id, alert.timestamp)
-        return false
-      }
-      
-      const isInRange = alertDate >= filterDate
-      console.log('📊 Alerta evaluada:', {
-        id: alert.id,
-        userName: alert.userName,
-        alertDate: alertDate,
-        filterDate: filterDate,
-        isInRange: isInRange,
-        resolved: alert.resolved
-      })
-      
-      return isInRange
-      
+
+      if (isNaN(alertDate.getTime())) return false
+
+      return alertDate >= filterDate
+
     } catch (dateError) {
-      console.error('❌ Error procesando fecha de alerta:', alert.id, dateError)
+      console.error('Error procesando fecha de alerta:', alert.id, dateError)
       return false
     }
   })
-  
-  // Ordenar por fecha (más reciente primero)
-  const sorted = filtered.sort((a, b) => {
+
+  return filtered.sort((a, b) => {
     try {
       const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp)
       const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp)
       return dateB.getTime() - dateA.getTime()
     } catch (error) {
-      console.error('❌ Error ordenando alertas:', error)
       return 0
     }
   })
-  
-  console.log(`✅ ${sorted.length} alertas filtradas para mostrar`)
-  return sorted
 })
 
-// Función para formatear ubicación
 const formatLocation = (alert: FirebaseAlert): string => {
   if (alert.coordinates && Array.isArray(alert.coordinates) && alert.coordinates.length === 2) {
     const [lng, lat] = alert.coordinates
@@ -193,227 +134,98 @@ const formatLocation = (alert: FirebaseAlert): string => {
   return alert.location || 'Ubicación no disponible'
 }
 
-// Función para obtener el tiempo relativo
 const getRelativeTime = (timestamp: any): string => {
   try {
     const date = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp)
     const now = new Date()
     const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60))
-    
+
     if (diffInMinutes < 1) return 'Hace un momento'
     if (diffInMinutes < 60) return `Hace ${diffInMinutes} minuto${diffInMinutes > 1 ? 's' : ''}`
-    
+
     const diffInHours = Math.floor(diffInMinutes / 60)
     if (diffInHours < 24) return `Hace ${diffInHours} hora${diffInHours > 1 ? 's' : ''}`
-    
+
     const diffInDays = Math.floor(diffInHours / 24)
     if (diffInDays < 7) return `Hace ${diffInDays} día${diffInDays > 1 ? 's' : ''}`
-    
-    return date.toLocaleDateString('es-ES', { 
-      day: '2-digit', 
-      month: 'short', 
+
+    return date.toLocaleDateString('es-ES', {
+      day: '2-digit',
+      month: 'short',
       year: 'numeric',
-      hour: '2-digit', 
-      minute: '2-digit' 
+      hour: '2-digit',
+      minute: '2-digit'
     })
   } catch (error) {
-    console.error('❌ Error calculando tiempo relativo:', error)
     return 'Fecha no disponible'
   }
 }
 
-// 🔧 FUNCIÓN CORREGIDA - Resolver alerta con actualización correcta del campo
-const resolveAlert = async (alertId: string) => {
+// FUNCIÓN CORREGIDA - Resolver alerta
+const resolveAlertHandler = async (alertId: string, source: 'circle' | 'smartwatch' = 'circle') => {
   try {
-    console.log('✅ Resolviendo alerta:', alertId)
-    
-    // Buscar la alerta en el estado local para debug
-    const alertToResolve = groupAlerts.value.find(a => a.id === alertId)
-    if (alertToResolve) {
-      console.log('📋 Alerta a resolver:', {
-        id: alertToResolve.id,
-        userName: alertToResolve.userName,
-        currentResolved: alertToResolve.resolved,
-        activatrue: (alertToResolve as any).activatrue
-      })
-    }
-    
-    // Llamar a la función de Firebase para resolver
-    await resolveGroupAlert(alertId)
-    
+    console.log('✅ Resolviendo alerta:', alertId, 'Origen:', source)
+
+    await resolveAlert(alertId, source)
+
     success.value = 'Alerta marcada como resuelta'
-    
-    // 🔧 ACTUALIZACIÓN INMEDIATA DEL ESTADO LOCAL
+
+    // Actualización inmediata del estado local
     const alertIndex = groupAlerts.value.findIndex(alert => alert.id === alertId)
     if (alertIndex !== -1) {
-      // Actualizar inmediatamente el estado local
       groupAlerts.value[alertIndex] = {
         ...groupAlerts.value[alertIndex],
-        resolved: true  // Marcar como resuelta
+        resolved: true
       }
-      console.log('✅ Estado local actualizado inmediatamente')
     }
-    
-    // Las alertas también se actualizarán automáticamente por la suscripción
-    console.log('✅ Alerta resuelta exitosamente')
-    
+
   } catch (err: any) {
     console.error('❌ Error resolviendo alerta:', err)
     error.value = err.message || 'Error al resolver la alerta'
   }
 }
 
-// Función para actualizar las estadísticas de alertas
-const updateAlertStats = async () => {
-  if (!selectedGroup.value?.id) {
-    alertStats.value = {
-      total: 0, active: 0, resolved: 0, today: 0, thisWeek: 0, thisMonth: 0
-    }
-    return
-  }
-  
-  try {
-    console.log('📊 Actualizando estadísticas para grupo:', selectedGroup.value.id)
-    const stats = await getGroupAlertStats(selectedGroup.value.id)
-    alertStats.value = stats
-    console.log('📊 Estadísticas actualizadas:', stats)
-  } catch (error) {
-    console.error('❌ Error actualizando estadísticas de alertas:', error)
-  }
-}
+const updateAlertStats = () => {
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const thisWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+  const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1)
 
-// 🔧 FUNCIÓN CRÍTICA CORREGIDA - Aquí estaba el problema principal
-const subscribeToSelectedGroupAlerts = (groupId: string) => {
-  console.log('🚨 subscribeToSelectedGroupAlerts llamada con groupId:', groupId)
-  
-  // Limpiar suscripción anterior si existe
-  if (unsubscribeGroupAlerts) {
-    console.log('🧹 Limpiando suscripción anterior')
-    unsubscribeGroupAlerts()
-    unsubscribeGroupAlerts = null
+  alertStats.value = {
+    total: groupAlerts.value.length,
+    active: 0,
+    resolved: 0,
+    today: 0,
+    thisWeek: 0,
+    thisMonth: 0
   }
-  
-  if (!groupId) {
-    console.log('⚠️ GroupId vacío, limpiando alertas')
-    groupAlerts.value = []
-    return
-  }
-  
-  console.log('🚨 Iniciando suscripción a alertas del grupo:', groupId)
-  
-  try {
-    unsubscribeGroupAlerts = subscribeToGroupAlerts(groupId, (alerts) => {
-      console.log('📨 CALLBACK RECIBIDO - Alertas del grupo:', groupId)
-      console.log('📊 Cantidad de alertas recibidas:', alerts.length)
-      
-      // 🔧 LÓGICA CORREGIDA - El problema estaba aquí
-      const processedAlerts = alerts.map((alert, index) => {
-        console.log(`📋 Alerta ${index + 1} RAW desde Firebase:`, {
-          id: alert.id,
-          userName: alert.userName,
-          message: alert.message,
-          activatrue: (alert as any).activatrue,
-          resolved: alert.resolved,
-          timestamp: alert.timestamp
-        })
-        
-        // 🔧 LÓGICA CORREGIDA DEFINITIVA:
-        // Una alerta se considera RESUELTA solo si:
-        // 1. El campo 'resolved' es explícitamente true
-        // 2. O el campo 'activatrue' es explícitamente false
-        // IMPORTANTE: Si ninguno de estos campos existe o son undefined/null,
-        // la alerta se considera ACTIVA por defecto
-        
-        let isResolved = false
-        
-        // Verificar estado de resolución
-        if (alert.resolved === true) {
-          isResolved = true
-          console.log(`   → Alerta marcada como RESUELTA (resolved: true)`)
-        } else if ((alert as any).activatrue === false) {
-          isResolved = true
-          console.log(`   → Alerta marcada como RESUELTA (activatrue: false)`)
-        } else {
-          // 🔧 CAMBIO CRÍTICO: Por defecto las alertas son ACTIVAS
-          isResolved = false
-          console.log(`   → Alerta marcada como ACTIVA (estado por defecto)`)
-        }
-        
-        const processedAlert = {
-          ...alert,
-          resolved: isResolved
-        }
-        
-        console.log(`✅ Alerta ${index + 1} PROCESADA:`, {
-          id: processedAlert.id,
-          userName: processedAlert.userName,
-          resolved: processedAlert.resolved,
-          status: processedAlert.resolved ? '🟢 RESUELTA' : '🔴 SOS ACTIVA'
-        })
-        
-        return processedAlert
-      })
-      
-      // ✅ ASIGNAR ALERTAS PROCESADAS
-      groupAlerts.value = processedAlerts
-      console.log('✅ groupAlerts.value actualizado con', processedAlerts.length, 'alertas procesadas')
-      
-      // Mostrar resumen de estados
-      const activeAlerts = processedAlerts.filter(a => !a.resolved).length
-      const resolvedAlerts = processedAlerts.filter(a => a.resolved).length
-      console.log(`📊 RESUMEN FINAL: ${activeAlerts} SOS ACTIVAS, ${resolvedAlerts} RESUELTAS`)
-      
-      // Actualizar estadísticas
-      updateAlertStats()
-    })
-    
-    console.log('✅ Suscripción establecida exitosamente')
-    
-  } catch (subscriptionError) {
-    console.error('❌ Error estableciendo suscripción:', subscriptionError)
-    groupAlerts.value = []
-  }
-}
 
-// 🔧 WATCHER MEJORADO - Cambios en el grupo seleccionado
-watch(selectedGroup, (newGroup, oldGroup) => {
-  console.log('👀 WATCH selectedGroup:', {
-    newGroupId: newGroup?.id,
-    newGroupName: newGroup?.name,
-    oldGroupId: oldGroup?.id
-  })
-  
-  if (newGroup?.id !== oldGroup?.id) {
-    if (newGroup?.id) {
-      console.log('🔄 Cambiando suscripción al grupo:', newGroup.id)
-      subscribeToSelectedGroupAlerts(newGroup.id)
+  groupAlerts.value.forEach(alert => {
+    let alertDate: Date
+
+    if (alert.timestamp?.toDate) {
+      alertDate = alert.timestamp.toDate()
+    } else if (alert.timestamp?.seconds) {
+      alertDate = new Date(alert.timestamp.seconds * 1000)
     } else {
-      console.log('🧹 Limpiando alertas - sin grupo seleccionado')
-      groupAlerts.value = []
-      if (unsubscribeGroupAlerts) {
-        unsubscribeGroupAlerts()
-        unsubscribeGroupAlerts = null
-      }
+      alertDate = new Date(alert.timestamp)
     }
-  }
-}, { immediate: true })
 
-// FUNCIÓN PARA VALIDAR COORDENADAS
-const validateCoordinates = (lat: any, lng: any) => {
-  const numLat = parseFloat(lat)
-  const numLng = parseFloat(lng)
-  
-  return !isNaN(numLat) && !isNaN(numLng) && 
-         numLat >= -90 && numLat <= 90 && 
-         numLng >= -180 && numLng <= 180
+    if (isNaN(alertDate.getTime())) return
+
+    if (alert.resolved) {
+      alertStats.value.resolved++
+    } else {
+      alertStats.value.active++
+    }
+
+    if (alertDate >= today) alertStats.value.today++
+    if (alertDate >= thisWeek) alertStats.value.thisWeek++
+    if (alertDate >= thisMonth) alertStats.value.thisMonth++
+  })
 }
 
-// FUNCIÓN PARA MANEJAR ERRORES DEL MAPA
-const handleMapError = (error: any) => {
-  console.error('❌ Error en MapPanel:', error)
-}
-
-// Crear grupo con auto-sincronización
+// FUNCIONES PARA GRUPOS
 const createNewGroup = async () => {
   if (!newGroup.value.name.trim()) {
     error.value = 'El nombre del grupo es requerido'
@@ -432,10 +244,10 @@ const createNewGroup = async () => {
       pendingInvitations: []
     })
 
-    success.value = '🚀 Grupo creado y sincronizado automáticamente (Web ↔ Móvil)'
+    success.value = '🚀 Grupo creado exitosamente'
     newGroup.value = { name: '', description: '' }
     showCreateGroup.value = false
-    
+
     await updateSyncHealth()
   } catch (err: any) {
     error.value = err.message || 'Error al crear el grupo'
@@ -444,7 +256,6 @@ const createNewGroup = async () => {
   }
 }
 
-// Enviar invitación por correo
 const inviteUser = async () => {
   if (!inviteForm.value.email.trim() || !selectedGroupForInvite.value) {
     error.value = 'El email es requerido'
@@ -480,11 +291,11 @@ const inviteUser = async () => {
       }
     )
 
-    success.value = `📧 Invitación enviada a ${inviteForm.value.email}. Debe aceptarla para unirse al grupo.`
+    success.value = `📧 Invitación enviada a ${inviteForm.value.email}`
     inviteForm.value.email = ''
     showInviteModal.value = false
     selectedGroupForInvite.value = null
-    
+
     await updateSyncHealth()
   } catch (err: any) {
     error.value = err.message || 'Error al enviar la invitación'
@@ -493,15 +304,14 @@ const inviteUser = async () => {
   }
 }
 
-// Responder a invitación
 const respondInvitation = async (invitationId: string, response: 'accepted' | 'rejected') => {
   loading.value = true
   error.value = null
 
   try {
     await respondToInvitation(invitationId, response)
-    success.value = response === 'accepted' 
-      ? 'Te has unido al grupo exitosamente' 
+    success.value = response === 'accepted'
+      ? 'Te has unido al grupo exitosamente'
       : 'Invitación rechazada'
   } catch (err: any) {
     error.value = err.message || 'Error al responder la invitación'
@@ -510,27 +320,25 @@ const respondInvitation = async (invitationId: string, response: 'accepted' | 'r
   }
 }
 
-// Actualizar salud de sincronización
 const updateSyncHealth = async () => {
   if (!userStore.user?.email) return
-  
+
   try {
     const health = await checkAutoSyncHealth(userStore.user.email)
     autoSyncHealth.value = health
   } catch (error) {
-    console.error('❌ Error actualizando salud de sync:', error)
+    console.error('Error actualizando salud de sync:', error)
   }
 }
 
-// Ejecutar migración automática
 const runAutoMigration = async () => {
   migrating.value = true
   error.value = null
-  
+
   try {
     const result = await migrateExistingGroupsToAutoSync()
     migrationResult.value = result
-    success.value = `🎉 Migración completada: ${result.updated}/${result.processed} grupos sincronizados`
+    success.value = `🎉 Migración completada: ${result.updated}/${result.processed} grupos`
     await updateSyncHealth()
   } catch (err: any) {
     error.value = 'Error en migración: ' + err.message
@@ -539,7 +347,6 @@ const runAutoMigration = async () => {
   }
 }
 
-// Abrir modal de invitación
 const openInviteModal = (group: UnifiedGroup) => {
   selectedGroupForInvite.value = group
   showInviteModal.value = true
@@ -547,27 +354,21 @@ const openInviteModal = (group: UnifiedGroup) => {
   error.value = null
 }
 
-// 🔧 FUNCIÓN CORREGIDA - Seleccionar grupo con debug
 const selectGroup = (group: UnifiedGroup | null) => {
-  console.log('🎯 selectGroup llamada:', {
-    groupId: group?.id,
-    groupName: group?.name
-  })
   selectedGroup.value = group
 }
 
-// Obtener color para el estado de alerta
 const getAlertTypeColor = (type: string, resolved: boolean) => {
   if (resolved) return 'bg-gray-100 text-gray-600 border-gray-200'
-  
+
   switch (type) {
     case 'panic': return 'bg-red-100 text-red-800 border-red-200'
+    case 'smartwatch': return 'bg-purple-100 text-purple-800 border-purple-200'
     case 'geofence': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
     default: return 'bg-orange-100 text-orange-800 border-orange-200'
   }
 }
 
-// Obtener estado del grupo
 const getGroupStatus = (group: UnifiedGroup): string => {
   if (group.isAutoSynced && group.membersUids?.length) {
     return '🟢'
@@ -578,7 +379,6 @@ const getGroupStatus = (group: UnifiedGroup): string => {
   }
 }
 
-// Función para obtener nombre truncado
 const getUserDisplayName = (email: string, maxLength: number = 15): string => {
   if (email === userStore.user?.email) {
     return 'Tú'
@@ -587,19 +387,23 @@ const getUserDisplayName = (email: string, maxLength: number = 15): string => {
   return name.length > maxLength ? name.substring(0, maxLength) + '...' : name
 }
 
-// Limpiar mensajes
 const clearMessages = () => {
   error.value = null
   success.value = null
 }
 
+// OBTENER ICONO DE ALERTA
+const getAlertIcon = (alert: FirebaseAlert): string => {
+  if (alert.source === 'smartwatch') return '⌚'
+  return '📱'
+}
+
 let unsubscribeUserGroups: (() => void) | null = null
 let unsubscribeInvitations: (() => void) | null = null
 
-// 🔧 ONMOUNTED MEJORADO con mejor debug
 onMounted(async () => {
   console.log('🚀 onMounted - EstadisticasView iniciando')
-  
+
   if (!userStore.isAuthenticated || !userStore.user?.email) {
     console.log('⚠️ Usuario no autenticado')
     return
@@ -607,48 +411,46 @@ onMounted(async () => {
 
   console.log('👤 Usuario autenticado:', userStore.user.email)
 
-  // Suscribirse a grupos con auto-sincronización
+  // Suscribirse a grupos
   unsubscribeUserGroups = await subscribeToUserGroupsAutoSync(
     userStore.user.email,
     (groups) => {
-      console.log('📊 CALLBACK - Grupos auto-sync actualizados:', groups.length)
-      groups.forEach((group, index) => {
-        console.log(`📋 Grupo ${index + 1}:`, {
-          id: group.id,
-          name: group.name,
-          members: group.members.length,
-          isAutoSynced: group.isAutoSynced
-        })
-      })
-      
+      console.log('📊 Grupos actualizados:', groups.length)
       userGroups.value = groups
       loading.value = false
-      
-      // ✅ SELECCIÓN AUTOMÁTICA DE GRUPO MEJORADA
+
       if (groups.length > 0) {
         if (!selectedGroup.value || !groups.find(g => g.id === selectedGroup.value?.id)) {
-          console.log('🎯 Auto-seleccionando primer grupo:', groups[0].name)
           selectedGroup.value = groups[0]
         }
       } else {
-        console.log('📭 No hay grupos disponibles')
         selectedGroup.value = null
       }
     }
   )
 
-  // Suscribirse a invitaciones pendientes
+  // 🔥 SUSCRIPCIÓN A TODAS LAS ALERTAS (CÍRCULOS + SMARTWATCH)
+  console.log('🚨 Iniciando suscripción a TODAS las alertas...')
+  unsubscribeAllAlerts = subscribeToAllUserAlerts(
+    userStore.user.email,
+    (alerts) => {
+      console.log(`📊 TODAS LAS ALERTAS actualizadas: ${alerts.length}`)
+      console.log(`  - Círculos: ${alerts.filter(a => a.source === 'circle').length}`)
+      console.log(`  - Smartwatch: ${alerts.filter(a => a.source === 'smartwatch').length}`)
+
+      groupAlerts.value = alerts
+      updateAlertStats()
+    }
+  )
+
+  // Suscribirse a invitaciones
   unsubscribeInvitations = subscribeToUserInvitations(userStore.user.email, (invitations) => {
-    console.log('📨 Invitaciones pendientes actualizadas:', invitations.length)
     pendingInvitations.value = invitations
   })
 
-  // Actualizar salud de sincronización
   await updateSyncHealth()
 
-  // Ejecutar migración automática si es necesario
   if (autoSyncHealth.value.healthPercentage < 100 && autoSyncHealth.value.totalGroups > 0) {
-    console.log('🔄 Ejecutando migración automática en estadísticas...')
     setTimeout(() => runAutoMigration(), 2000)
   }
 })
@@ -656,66 +458,9 @@ onMounted(async () => {
 onUnmounted(() => {
   console.log('🧹 onUnmounted - Limpiando suscripciones')
   if (unsubscribeUserGroups) unsubscribeUserGroups()
-  if (unsubscribeGroupAlerts) unsubscribeGroupAlerts()
+  if (unsubscribeAllAlerts) unsubscribeAllAlerts()
   if (unsubscribeInvitations) unsubscribeInvitations()
 })
-
-// 🔧 DEBUG - Exponer funciones para testing
-if (typeof window !== 'undefined') {
-  (window as any).debugEstadisticas = {
-    groupAlerts: () => {
-      console.table(groupAlerts.value.map(alert => ({
-        id: alert.id,
-        userName: alert.userName,
-        resolved: alert.resolved,
-        activatrue: (alert as any).activatrue,
-        message: alert.message
-      })))
-      return groupAlerts.value
-    },
-    filteredAlerts: () => filteredAlerts.value,
-    selectedGroup: () => selectedGroup.value,
-    forceRefresh: () => {
-      if (selectedGroup.value?.id) {
-        subscribeToSelectedGroupAlerts(selectedGroup.value.id)
-      }
-    },
-    // 🔧 NUEVA FUNCIÓN: Verificar estado real en Firebase
-    checkAlertStates: async () => {
-      if (!selectedGroup.value?.id) {
-        console.log('⚠️ No hay grupo seleccionado')
-        return
-      }
-      
-      console.log('🔍 Verificando estados reales en Firebase...')
-      
-      // Importar función de debug de Firebase
-      const { debugGroupAlerts } = await import('@/firebase')
-      await debugGroupAlerts(selectedGroup.value.id)
-    },
-    // 🔧 NUEVA FUNCIÓN: Cambiar manualmente el estado de una alerta
-    toggleAlertState: (alertId: string) => {
-      const alertIndex = groupAlerts.value.findIndex(a => a.id === alertId)
-      if (alertIndex !== -1) {
-        groupAlerts.value[alertIndex].resolved = !groupAlerts.value[alertIndex].resolved
-        console.log('🔄 Estado de alerta cambiado:', {
-          id: alertId,
-          newState: groupAlerts.value[alertIndex].resolved ? 'RESUELTA' : 'ACTIVA'
-        })
-      }
-    }
-  }
-  
-  console.log('🔧 Debug disponible en window.debugEstadisticas')
-  console.log(`
-🔧 FUNCIONES DEBUG DISPONIBLES:
-• debugEstadisticas.groupAlerts() - Ver alertas cargadas
-• debugEstadisticas.filteredAlerts() - Ver alertas filtradas  
-• debugEstadisticas.checkAlertStates() - Verificar estado real en Firebase
-• debugEstadisticas.forceRefresh() - Forzar actualización
-• debugEstadisticas.toggleAlertState('alertId') - Cambiar estado manualmente
-  `)
-}
 </script>
 
 <template>
@@ -726,7 +471,7 @@ if (typeof window !== 'undefined') {
     <div class="hidden">
       <LocationTracker />
     </div>
-  
+
     <div class="min-h-screen pt-20">
       <!-- Header compacto CON ESTADO DE AUTO-SYNC -->
       <div class="bg-white border-b border-gray-200 px-6 py-4 shadow-sm">
@@ -734,13 +479,17 @@ if (typeof window !== 'undefined') {
           <div>
             <h1 class="text-xl font-semibold text-gray-900 flex items-center">
               <svg class="w-6 h-6 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z">
+                </path>
               </svg>
-              Panel de Control 
+              Panel de Control
               <span v-if="migrating" class="ml-2 text-sm text-blue-600 flex items-center">
                 <svg class="w-4 h-4 mr-1 animate-spin" fill="none" viewBox="0 0 24 24">
                   <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <path class="opacity-75" fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                  </path>
                 </svg>
                 Migrando...
               </span>
@@ -754,12 +503,15 @@ if (typeof window !== 'undefined') {
             </div>
             <div class="flex items-center bg-blue-50 px-3 py-2 rounded-lg">
               <span class="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-              <span class="text-blue-700 font-medium">{{ userGroups.reduce((total, group) => total + group.members.length, 0) }} miembros</span>
+              <span class="text-blue-700 font-medium">{{userGroups.reduce((total, group) => total +
+                group.members.length, 0)}} miembros</span>
             </div>
             <!-- 🔧 INDICADOR DE ALERTAS AGREGADO -->
             <div class="flex items-center bg-red-50 px-3 py-2 rounded-lg">
-              <span class="w-2 h-2 bg-red-500 rounded-full mr-2" :class="{ 'animate-pulse': groupAlerts.filter(a => !a.resolved).length > 0 }"></span>
-              <span class="text-red-700 font-medium">{{ groupAlerts.filter(a => !a.resolved).length }} SOS activas</span>
+              <span class="w-2 h-2 bg-red-500 rounded-full mr-2"
+                :class="{ 'animate-pulse': groupAlerts.filter(a => !a.resolved).length > 0 }"></span>
+              <span class="text-red-700 font-medium">{{groupAlerts.filter(a => !a.resolved).length}} SOS
+                activas</span>
             </div>
             <div class="flex items-center px-3 py-2 rounded-lg" :class="{
               'bg-green-50': autoSyncHealth.healthPercentage >= 90,
@@ -768,13 +520,13 @@ if (typeof window !== 'undefined') {
             }">
               <div :class="[
                 'w-2 h-2 rounded-full mr-2',
-                autoSyncHealth.healthPercentage >= 90 ? 'bg-green-500' : 
-                autoSyncHealth.healthPercentage >= 70 ? 'bg-yellow-500' : 'bg-red-500'
+                autoSyncHealth.healthPercentage >= 90 ? 'bg-green-500' :
+                  autoSyncHealth.healthPercentage >= 70 ? 'bg-yellow-500' : 'bg-red-500'
               ]"></div>
               <span :class="[
                 'font-medium text-xs',
-                autoSyncHealth.healthPercentage >= 90 ? 'text-green-700' : 
-                autoSyncHealth.healthPercentage >= 70 ? 'text-yellow-700' : 'text-red-700'
+                autoSyncHealth.healthPercentage >= 90 ? 'text-green-700' :
+                  autoSyncHealth.healthPercentage >= 70 ? 'text-yellow-700' : 'text-red-700'
               ]">Sync: {{ autoSyncHealth.healthPercentage }}%</span>
             </div>
             <div class="flex items-center bg-red-50 px-3 py-2 rounded-lg">
@@ -785,10 +537,12 @@ if (typeof window !== 'undefined') {
         </div>
 
         <!-- BARRA DE ESTADO DE MIGRACIÓN -->
-        <div v-if="migrationResult" class="mt-3 p-3 bg-gradient-to-r from-green-50 to-green-100 border border-green-200 rounded-lg">
+        <div v-if="migrationResult"
+          class="mt-3 p-3 bg-gradient-to-r from-green-50 to-green-100 border border-green-200 rounded-lg">
           <div class="flex items-center">
             <svg class="w-5 h-5 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
             </svg>
             <span class="text-green-700 font-medium">
               Migración completada: {{ migrationResult.updated }}/{{ migrationResult.processed }} grupos sincronizados
@@ -803,7 +557,9 @@ if (typeof window !== 'undefined') {
           <div class="flex justify-between items-center">
             <div class="flex items-center">
               <svg class="w-5 h-5 text-red-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.996-.833-2.764 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.996-.833-2.764 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z">
+                </path>
               </svg>
               <p class="text-red-600 text-sm">{{ error }}</p>
             </div>
@@ -821,7 +577,8 @@ if (typeof window !== 'undefined') {
           <div class="flex justify-between items-center">
             <div class="flex items-center">
               <svg class="w-5 h-5 text-green-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
               </svg>
               <p class="text-green-600 text-sm">{{ success }}</p>
             </div>
@@ -839,19 +596,18 @@ if (typeof window !== 'undefined') {
         <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 shadow-sm">
           <h3 class="font-semibold text-blue-800 mb-3 flex items-center">
             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z">
+              </path>
             </svg>
-            Invitaciones Pendientes 
+            Invitaciones Pendientes
             <span class="ml-2 bg-blue-200 text-blue-800 px-2 py-1 rounded-full text-xs">
               {{ pendingInvitations.length }}
             </span>
           </h3>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div 
-              v-for="invitation in pendingInvitations" 
-              :key="invitation.id"
-              class="bg-white rounded-lg p-4 border border-blue-100 hover:border-blue-200 transition-colors"
-            >
+            <div v-for="invitation in pendingInvitations" :key="invitation.id"
+              class="bg-white rounded-lg p-4 border border-blue-100 hover:border-blue-200 transition-colors">
               <div class="flex justify-between items-start">
                 <div class="min-w-0 flex-1 pr-3">
                   <h4 class="font-medium text-gray-800 truncate">{{ invitation.groupName }}</h4>
@@ -863,29 +619,25 @@ if (typeof window !== 'undefined') {
                   </p>
                   <p class="text-xs text-gray-400 mt-2 flex items-center">
                     <svg class="w-3 h-3 mr-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                     </svg>
                     <span class="truncate">{{ new Date(invitation.createdAt.toDate()).toLocaleDateString() }}</span>
                   </p>
                 </div>
                 <div class="flex flex-col gap-2 flex-shrink-0">
-                  <button
-                    @click="respondInvitation(invitation.id, 'accepted')"
-                    :disabled="loading"
-                    class="px-3 py-1 bg-green-500 hover:bg-green-600 text-white text-sm rounded-lg transition-colors disabled:opacity-50 flex items-center"
-                  >
+                  <button @click="respondInvitation(invitation.id, 'accepted')" :disabled="loading"
+                    class="px-3 py-1 bg-green-500 hover:bg-green-600 text-white text-sm rounded-lg transition-colors disabled:opacity-50 flex items-center">
                     <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                     </svg>
                     Aceptar
                   </button>
-                  <button
-                    @click="respondInvitation(invitation.id, 'rejected')"
-                    :disabled="loading"
-                    class="px-3 py-1 bg-red-500 hover:bg-red-600 text-white text-sm rounded-lg transition-colors disabled:opacity-50 flex items-center"
-                  >
+                  <button @click="respondInvitation(invitation.id, 'rejected')" :disabled="loading"
+                    class="px-3 py-1 bg-red-500 hover:bg-red-600 text-white text-sm rounded-lg transition-colors disabled:opacity-50 flex items-center">
                     <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                      </path>
                     </svg>
                     Rechazar
                   </button>
@@ -905,37 +657,39 @@ if (typeof window !== 'undefined') {
             <div class="flex justify-between items-center mb-4">
               <h2 class="font-semibold text-gray-800 flex items-center">
                 <svg class="w-5 h-5 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z">
+                  </path>
                 </svg>
                 <span class="truncate">Mis Grupos</span>
                 <span class="ml-2 bg-white px-2 py-1 rounded-full text-xs text-purple-600 border flex-shrink-0">
                   Auto-Sync
                 </span>
               </h2>
-              <button
-                @click="showCreateGroup = !showCreateGroup"
-                class="px-3 py-2 bg-green-500 hover:bg-green-600 text-white text-sm rounded-lg transition-colors flex items-center shadow-sm flex-shrink-0"
-              >
+              <button @click="showCreateGroup = !showCreateGroup"
+                class="px-3 py-2 bg-green-500 hover:bg-green-600 text-white text-sm rounded-lg transition-colors flex items-center shadow-sm flex-shrink-0">
                 <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                 </svg>
                 Crear
               </button>
             </div>
-            
+
             <!-- INDICADOR DE SALUD DE SINCRONIZACIÓN -->
             <div class="mb-4 p-3 bg-white border border-gray-200 rounded-lg shadow-sm">
               <div class="flex justify-between items-center text-xs mb-2">
                 <span class="text-gray-700 font-medium flex items-center">
                   <svg class="w-4 h-4 mr-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                    </path>
                   </svg>
                   <span class="truncate">Estado Sync</span>
                 </span>
                 <span :class="[
                   'font-bold px-2 py-1 rounded-full flex-shrink-0',
-                  autoSyncHealth.healthPercentage >= 90 ? 'text-green-600 bg-green-100' : 
-                  autoSyncHealth.healthPercentage >= 70 ? 'text-yellow-600 bg-yellow-100' : 'text-red-600 bg-red-100'
+                  autoSyncHealth.healthPercentage >= 90 ? 'text-green-600 bg-green-100' :
+                    autoSyncHealth.healthPercentage >= 70 ? 'text-yellow-600 bg-yellow-100' : 'text-red-600 bg-red-100'
                 ]">{{ autoSyncHealth.healthPercentage }}%</span>
               </div>
               <div class="grid grid-cols-2 gap-2 text-xs">
@@ -949,11 +703,8 @@ if (typeof window !== 'undefined') {
                 </div>
               </div>
               <div v-if="autoSyncHealth.needsUpdate.length > 0" class="mt-2">
-                <button
-                  @click="runAutoMigration"
-                  :disabled="migrating"
-                  class="w-full px-2 py-1 bg-orange-500 hover:bg-orange-600 text-white text-xs rounded transition-colors disabled:opacity-50"
-                >
+                <button @click="runAutoMigration" :disabled="migrating"
+                  class="w-full px-2 py-1 bg-orange-500 hover:bg-orange-600 text-white text-xs rounded transition-colors disabled:opacity-50">
                   🔄 Sincronizar
                 </button>
               </div>
@@ -962,7 +713,8 @@ if (typeof window !== 'undefined') {
             <!-- Formulario crear grupo -->
             <div v-if="showCreateGroup" class="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
               <h4 class="font-medium text-gray-800 mb-3 flex items-center">
-                <svg class="w-4 h-4 mr-2 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-4 h-4 mr-2 text-green-600 flex-shrink-0" fill="none" stroke="currentColor"
+                  viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                 </svg>
                 <span class="truncate">Nuevo Grupo (Auto-Sync)</span>
@@ -970,41 +722,29 @@ if (typeof window !== 'undefined') {
               <div class="space-y-3">
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">Nombre del grupo *</label>
-                  <input
-                    v-model="newGroup.name"
-                    type="text"
+                  <input v-model="newGroup.name" type="text"
                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
-                    placeholder="Ej: Familia Pérez"
-                    maxlength="50"
-                    @keyup.enter="createNewGroup"
-                  />
+                    placeholder="Ej: Familia Pérez" maxlength="50" @keyup.enter="createNewGroup" />
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
-                  <textarea
-                    v-model="newGroup.description"
-                    rows="2"
+                  <textarea v-model="newGroup.description" rows="2"
                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 resize-none text-sm"
-                    placeholder="Descripción opcional del grupo"
-                    maxlength="200"
-                  ></textarea>
+                    placeholder="Descripción opcional del grupo" maxlength="200"></textarea>
                 </div>
                 <div class="flex gap-2">
-                  <button
-                    @click="createNewGroup"
-                    :disabled="loading"
-                    class="px-3 py-2 bg-green-500 hover:bg-green-600 text-white text-sm rounded-lg transition-colors disabled:opacity-50 flex items-center"
-                  >
+                  <button @click="createNewGroup" :disabled="loading"
+                    class="px-3 py-2 bg-green-500 hover:bg-green-600 text-white text-sm rounded-lg transition-colors disabled:opacity-50 flex items-center">
                     <svg v-if="loading" class="w-4 h-4 mr-2 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24">
                       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      <path class="opacity-75" fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                      </path>
                     </svg>
                     <span class="truncate">{{ loading ? 'Creando...' : 'Crear' }}</span>
                   </button>
-                  <button
-                    @click="showCreateGroup = false"
-                    class="px-3 py-2 bg-gray-300 hover:bg-gray-400 text-gray-700 text-sm rounded-lg transition-colors flex-shrink-0"
-                  >
+                  <button @click="showCreateGroup = false"
+                    class="px-3 py-2 bg-gray-300 hover:bg-gray-400 text-gray-700 text-sm rounded-lg transition-colors flex-shrink-0">
                     Cancelar
                   </button>
                 </div>
@@ -1014,9 +754,12 @@ if (typeof window !== 'undefined') {
 
           <!-- Lista de grupos CON SCROLL ARREGLADO -->
           <div class="flex-1 overflow-y-auto" style="max-height: calc(100vh - 450px);">
-            <div v-if="userGroups.length === 0 && !loading" class="flex flex-col items-center justify-center py-12 text-gray-500">
+            <div v-if="userGroups.length === 0 && !loading"
+              class="flex flex-col items-center justify-center py-12 text-gray-500">
               <svg class="w-16 h-16 mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z">
+                </path>
               </svg>
               <p class="text-lg font-medium">No tienes grupos aún</p>
               <p class="text-sm mt-1">Crea tu primer grupo para comenzar</p>
@@ -1026,41 +769,44 @@ if (typeof window !== 'undefined') {
               <div class="flex items-center text-gray-600">
                 <svg class="w-5 h-5 mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
                   <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <path class="opacity-75" fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                  </path>
                 </svg>
                 <span>Cargando grupos...</span>
               </div>
             </div>
 
             <div v-else class="space-y-3 p-4">
-              <div 
-                v-for="group in userGroups" 
-                :key="group.id"
+              <div v-for="group in userGroups" :key="group.id"
                 class="border rounded-lg p-4 bg-white hover:shadow-md transition-all cursor-pointer"
                 :class="{ 'border-blue-500 shadow-md bg-blue-50': selectedGroup?.id === group.id }"
-                @click="selectGroup(group)"
-              >
+                @click="selectGroup(group)">
                 <!-- Header del grupo -->
                 <div class="flex justify-between items-start mb-3">
                   <div class="flex-1 min-w-0 pr-4">
-                    <h4 class="text-lg font-semibold text-gray-800 mb-1 truncate" :title="group.name">{{ group.name }}</h4>
-                    <p v-if="group.description" class="text-sm text-gray-600 mb-2 line-clamp-2" :title="group.description">{{ group.description }}</p>
+                    <h4 class="text-lg font-semibold text-gray-800 mb-1 truncate" :title="group.name">{{ group.name }}
+                    </h4>
+                    <p v-if="group.description" class="text-sm text-gray-600 mb-2 line-clamp-2"
+                      :title="group.description">{{ group.description }}</p>
                     <div class="flex items-center text-xs text-gray-500 min-w-0">
                       <svg class="w-4 h-4 mr-1 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
                       </svg>
-                      <span class="truncate">Creado por: {{ group.createdBy === userStore.user?.email ? 'Ti' : getUserDisplayName(group.createdBy, 20) }}</span>
+                      <span class="truncate">Creado por: {{ group.createdBy === userStore.user?.email ? 'Ti' :
+                        getUserDisplayName(group.createdBy, 20) }}</span>
                     </div>
                   </div>
-                  
+
                   <!-- Botones de acción -->
                   <div class="flex flex-col gap-2 flex-shrink-0">
-                    <button
-                      @click.stop="openInviteModal(group)"
-                      class="px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-lg transition-colors flex items-center"
-                    >
+                    <button @click.stop="openInviteModal(group)"
+                      class="px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded-lg transition-colors flex items-center">
                       <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z">
+                        </path>
                       </svg>
                       Invitar
                     </button>
@@ -1070,31 +816,33 @@ if (typeof window !== 'undefined') {
                 <!-- Lista de miembros CON ALTURA FIJA Y SCROLL -->
                 <div>
                   <h5 class="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-                    <svg class="w-4 h-4 mr-2 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z"></path>
+                    <svg class="w-4 h-4 mr-2 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor"
+                      viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z">
+                      </path>
                     </svg>
                     Miembros ({{ group.members.length }})
                   </h5>
-                  
+
                   <!-- Contenedor con scroll para miembros -->
-                  <div class="space-y-2 max-h-40 overflow-y-auto pr-2" :class="{ 'border-t border-gray-100 pt-2': group.members.length > 3 }">
-                    <div 
-                      v-for="(member, index) in group.members" 
-                      :key="member"
-                      class="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                    >
+                  <div class="space-y-2 max-h-40 overflow-y-auto pr-2"
+                    :class="{ 'border-t border-gray-100 pt-2': group.members.length > 3 }">
+                    <div v-for="(member, index) in group.members" :key="member"
+                      class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                       <div class="flex items-center flex-1 min-w-0">
                         <!-- Avatar simple -->
-                        <div class="w-8 h-8 rounded-full flex items-center justify-center mr-3 text-white text-sm font-semibold flex-shrink-0"
-                             :class="member === userStore.user?.email ? 'bg-green-500' : 'bg-blue-500'">
+                        <div
+                          class="w-8 h-8 rounded-full flex items-center justify-center mr-3 text-white text-sm font-semibold flex-shrink-0"
+                          :class="member === userStore.user?.email ? 'bg-green-500' : 'bg-blue-500'">
                           {{ getUserDisplayName(member).charAt(0).toUpperCase() }}
                         </div>
-                        
+
                         <!-- Info del miembro -->
                         <div class="flex-1 min-w-0">
                           <p class="text-sm font-medium text-gray-900 truncate"
-                             :class="member === userStore.user?.email ? 'text-green-700' : ''"
-                             :title="getUserDisplayName(member)">
+                            :class="member === userStore.user?.email ? 'text-green-700' : ''"
+                            :title="getUserDisplayName(member)">
                             {{ getUserDisplayName(member, 20) }}
                             <span v-if="group.createdBy === member" class="text-yellow-500 ml-1">👑</span>
                           </p>
@@ -1103,12 +851,12 @@ if (typeof window !== 'undefined') {
 
                         <!-- Indicadores de estado -->
                         <div class="flex items-center space-x-2 ml-2 flex-shrink-0">
-                          <span v-if="group.membersUids && group.membersUids[index]" 
-                                class="text-green-500 text-sm" title="Sincronizado con móvil">
+                          <span v-if="group.membersUids && group.membersUids[index]" class="text-green-500 text-sm"
+                            title="Sincronizado con móvil">
                             📱✅
                           </span>
-                          <span v-else-if="group.isAutoSynced" 
-                                class="text-orange-500 text-sm" title="Pendiente de sincronizar">
+                          <span v-else-if="group.isAutoSynced" class="text-orange-500 text-sm"
+                            title="Pendiente de sincronizar">
                             📱⏳
                           </span>
                         </div>
@@ -1122,7 +870,9 @@ if (typeof window !== 'undefined') {
                   <div class="flex items-center justify-between text-sm">
                     <div class="flex items-center text-purple-600 min-w-0">
                       <svg class="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                        </path>
                       </svg>
                       <span class="truncate">Auto-Sync Activo</span>
                     </div>
@@ -1139,12 +889,8 @@ if (typeof window !== 'undefined') {
         <!-- Panel central - Mapa -->
         <div class="flex-1 bg-white relative overflow-hidden">
           <div class="absolute inset-0">
-            <MapPanel 
-              :loading="loading" 
-              :selected-group="selectedGroup"
-              :user-groups="userGroups"
-              @error="handleMapError"
-            />
+            <MapPanel :loading="loading" :selected-group="selectedGroup" :user-groups="userGroups"
+              @error="handleMapError" />
           </div>
         </div>
 
@@ -1154,8 +900,11 @@ if (typeof window !== 'undefined') {
           <div class="p-4 border-b border-gray-200 bg-gradient-to-r from-red-50 to-orange-50">
             <div class="flex items-center justify-between mb-4">
               <h2 class="font-semibold text-gray-800 flex items-center">
-                <svg class="w-5 h-5 mr-2 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.996-.833-2.764 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                <svg class="w-5 h-5 mr-2 text-red-600 flex-shrink-0" fill="none" stroke="currentColor"
+                  viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.996-.833-2.764 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z">
+                  </path>
                 </svg>
                 <span class="truncate">Alertas SOS</span>
               </h2>
@@ -1168,8 +917,11 @@ if (typeof window !== 'undefined') {
             <div v-if="selectedGroup" class="mb-4 p-3 bg-white border border-gray-200 rounded-lg">
               <div class="flex items-center justify-between">
                 <div class="flex items-center min-w-0">
-                  <svg class="w-4 h-4 mr-2 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 515.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                  <svg class="w-4 h-4 mr-2 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor"
+                    viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 515.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z">
+                    </path>
                   </svg>
                   <span class="text-sm font-medium text-gray-800 truncate" :title="selectedGroup.name">
                     {{ selectedGroup.name }}
@@ -1178,10 +930,10 @@ if (typeof window !== 'undefined') {
                 <!-- 🔧 CONTADOR DE ALERTAS ACTIVAS VS RESUELTAS -->
                 <div class="flex items-center space-x-2 text-xs">
                   <span class="bg-red-100 text-red-700 px-2 py-1 rounded-full">
-                    {{ filteredAlerts.filter(a => !a.resolved).length }} activas
+                    {{filteredAlerts.filter(a => !a.resolved).length}} activas
                   </span>
                   <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
-                    {{ filteredAlerts.filter(a => a.resolved).length }} resueltas
+                    {{filteredAlerts.filter(a => a.resolved).length}} resueltas
                   </span>
                 </div>
               </div>
@@ -1189,8 +941,10 @@ if (typeof window !== 'undefined') {
 
             <div v-else class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
               <div class="flex items-center">
-                <svg class="w-4 h-4 mr-2 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                <svg class="w-4 h-4 mr-2 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor"
+                  viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                 </svg>
                 <span class="text-sm text-yellow-700">Selecciona un grupo para ver sus alertas</span>
               </div>
@@ -1198,60 +952,61 @@ if (typeof window !== 'undefined') {
 
             <!-- Filtros de tiempo -->
             <div class="flex space-x-1 bg-gray-100 rounded-lg p-1">
-              <button
-                v-for="filter in [
-                  { key: 'dia', label: 'Día' },
-                  { key: 'semana', label: 'Semana' },
-                  { key: 'mes', label: 'Mes' }
-                ]"
-                :key="filter.key"
-                @click="alertFilter = filter.key"
-                :class="[
-                  'flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all truncate',
-                  alertFilter === filter.key
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                ]"
-              >
+              <button v-for="filter in [
+                { key: 'dia', label: 'Día' },
+                { key: 'semana', label: 'Semana' },
+                { key: 'mes', label: 'Mes' }
+              ]" :key="filter.key" @click="alertFilter = filter.key" :class="[
+                'flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all truncate',
+                alertFilter === filter.key
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              ]">
                 {{ filter.label }}
               </button>
             </div>
           </div>
-          
+
           <!-- Lista de alertas -->
           <div class="flex-1 overflow-y-auto p-4">
             <div v-if="!selectedGroup" class="flex flex-col items-center justify-center py-12 text-gray-500">
               <svg class="w-16 h-16 mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 515.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 515.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z">
+                </path>
               </svg>
               <p class="text-lg font-medium">Selecciona un grupo</p>
               <p class="text-sm mt-1">Para ver las alertas del grupo</p>
             </div>
 
-            <div v-else-if="filteredAlerts.length === 0" class="flex flex-col items-center justify-center py-12 text-gray-500">
+            <div v-else-if="filteredAlerts.length === 0"
+              class="flex flex-col items-center justify-center py-12 text-gray-500">
               <svg class="w-16 h-16 mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
               </svg>
               <p class="text-lg font-medium">Sin alertas</p>
               <p class="text-sm mt-1">No hay alertas en el período seleccionado</p>
             </div>
-            
+
             <div v-else class="space-y-3">
-              <div 
-                v-for="alert in filteredAlerts" 
-                :key="alert.id"
+              <div v-for="alert in filteredAlerts" :key="alert.id"
                 class="border rounded-lg p-4 hover:shadow-md transition-all"
-                :class="alert.resolved ? 'bg-gray-50 border-gray-200' : 'bg-red-50 border-red-200'"
-              >
+                :class="alert.resolved ? 'bg-gray-50 border-gray-200' : 'bg-red-50 border-red-200'">
                 <!-- Header de la alerta -->
                 <div class="flex items-start justify-between mb-3">
                   <div class="flex items-center flex-1 min-w-0">
-                    <div 
-                      :class="[
-                        'w-3 h-3 rounded-full mr-3 mt-1 flex-shrink-0',
-                        alert.resolved ? 'bg-gray-400' : 'bg-red-500 animate-pulse'
-                      ]"
-                    ></div>
+                    <!-- AGREGAR ICONO -->
+                    <span class="text-xl mr-2">{{ getAlertIcon(alert) }}</span>
+
+                    <div :class="[
+                      'w-3 h-3 rounded-full mr-3 mt-1 flex-shrink-0',
+                      alert.resolved ? 'bg-gray-400' : 'bg-red-500 animate-pulse'
+                    ]"></div>
+                    <div :class="[
+                      'w-3 h-3 rounded-full mr-3 mt-1 flex-shrink-0',
+                      alert.resolved ? 'bg-gray-400' : 'bg-red-500 animate-pulse'
+                    ]"></div>
                     <div class="min-w-0 flex-1">
                       <h4 class="font-medium text-gray-900 text-sm truncate" :title="alert.userName">
                         {{ alert.userName }}
@@ -1267,8 +1022,8 @@ if (typeof window !== 'undefined') {
                   <div class="flex flex-col items-end gap-2 flex-shrink-0">
                     <span :class="[
                       'px-2 py-1 text-xs rounded-full border font-medium',
-                      alert.resolved 
-                        ? 'bg-gray-100 text-gray-600 border-gray-200' 
+                      alert.resolved
+                        ? 'bg-gray-100 text-gray-600 border-gray-200'
                         : 'bg-red-100 text-red-800 border-red-200'
                     ]">
                       {{ alert.resolved ? 'Resuelta' : 'SOS Activa' }}
@@ -1282,20 +1037,26 @@ if (typeof window !== 'undefined') {
                 <!-- Mensaje de la alerta -->
                 <div v-if="alert.message" class="mb-3 p-3 bg-white border border-gray-200 rounded-lg">
                   <div class="flex items-start">
-                    <svg class="w-4 h-4 mr-2 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                    <svg class="w-4 h-4 mr-2 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor"
+                      viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z">
+                      </path>
                     </svg>
                     <p class="text-sm text-gray-700">{{ alert.message }}</p>
                   </div>
                 </div>
-                
+
                 <!-- Detalles de la alerta -->
                 <div class="space-y-2 mb-3">
                   <!-- Ubicación -->
                   <div class="flex items-start text-xs text-gray-600">
-                    <svg class="w-4 h-4 mr-2 mt-0.5 flex-shrink-0 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    <svg class="w-4 h-4 mr-2 mt-0.5 flex-shrink-0 text-red-500" fill="none" stroke="currentColor"
+                      viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
                     </svg>
                     <div class="flex-1 min-w-0">
                       <p class="font-medium text-gray-700 mb-1">Ubicación de emergencia:</p>
@@ -1308,55 +1069,64 @@ if (typeof window !== 'undefined') {
                   <!-- Fecha y hora detallada -->
                   <div class="flex items-center text-xs text-gray-600">
                     <svg class="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                     </svg>
                     <span>
-                      {{ new Date(alert.timestamp?.toDate ? alert.timestamp.toDate() : alert.timestamp).toLocaleDateString('es-ES', { 
-                        weekday: 'long',
-                        year: 'numeric',
-                        month: 'long', 
-                        day: 'numeric',
-                        hour: '2-digit', 
-                        minute: '2-digit',
-                        second: '2-digit'
-                      }) }}
+                      {{ new Date(alert.timestamp?.toDate ? alert.timestamp.toDate() :
+                        alert.timestamp).toLocaleDateString('es-ES', {
+                          weekday: 'long',
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit'
+                        }) }}
                     </span>
                   </div>
 
                   <!-- Destinatarios de la alerta -->
-                  <div v-if="alert.destinatarios && alert.destinatarios.length > 0" class="flex items-start text-xs text-gray-600">
-                    <svg class="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 515.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                  <div v-if="alert.destinatarios && alert.destinatarios.length > 0"
+                    class="flex items-start text-xs text-gray-600">
+                    <svg class="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor"
+                      viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 515.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 919.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z">
+                      </path>
                     </svg>
                     <div>
-                      <p class="font-medium text-gray-700 mb-1">Notificado a {{ alert.destinatarios.length }} miembro(s)</p>
+                      <p class="font-medium text-gray-700 mb-1">Notificado a {{ alert.destinatarios.length }} miembro(s)
+                      </p>
                       <div class="text-xs text-gray-500">
                         {{ alert.destinatarios.length }} persona(s) recibieron la alerta
                       </div>
                     </div>
                   </div>
                 </div>
-                
+
                 <!-- Acciones -->
                 <div class="pt-3 border-t border-gray-200">
                   <div v-if="alert.resolved" class="flex items-center text-xs text-green-600">
                     <svg class="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                      <path fill-rule="evenodd"
+                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                        clip-rule="evenodd"></path>
                     </svg>
                     <span>Alerta resuelta</span>
                   </div>
                   <div v-else class="flex items-center justify-between">
                     <div class="flex items-center text-xs text-red-600">
                       <svg class="w-4 h-4 mr-2 animate-pulse flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                        <path fill-rule="evenodd"
+                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                          clip-rule="evenodd"></path>
                       </svg>
                       <span>Alerta activa - Requiere atención</span>
                     </div>
-                    <!-- Botón para resolver alerta -->
-                    <button
-                      @click="resolveAlert(alert.id)"
-                      class="px-3 py-1 bg-green-500 hover:bg-green-600 text-white text-xs rounded-lg transition-colors flex items-center font-medium"
-                    >
+                    <!-- Dentro de la alerta, reemplaza el botón "Resolver" con: -->
+                    <button @click="resolveAlertHandler(alert.id, alert.source || 'circle')"
+                      class="px-3 py-1 bg-green-500 hover:bg-green-600 text-white text-xs rounded-lg transition-colors flex items-center font-medium">
                       <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                       </svg>
@@ -1371,12 +1141,15 @@ if (typeof window !== 'undefined') {
       </div>
 
       <!-- Modal de invitación -->
-      <div v-if="showInviteModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div v-if="showInviteModal"
+        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
         <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md mx-4">
           <div class="text-center mb-6">
             <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 mb-4">
               <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z">
+                </path>
               </svg>
             </div>
             <h3 class="text-xl font-semibold text-gray-900 mb-2">
@@ -1386,13 +1159,16 @@ if (typeof window !== 'undefined') {
               Grupo: <span class="font-medium text-blue-600">{{ selectedGroupForInvite?.name }}</span>
             </p>
           </div>
-          
+
           <div class="space-y-4">
             <!-- Información importante -->
             <div class="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-lg border border-blue-200">
               <div class="flex items-start">
-                <svg class="w-5 h-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                <svg class="w-5 h-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" fill="none" stroke="currentColor"
+                  viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z">
+                  </path>
                 </svg>
                 <div class="min-w-0">
                   <p class="text-sm font-medium text-blue-800 mb-1">Invitación por Correo</p>
@@ -1409,47 +1185,46 @@ if (typeof window !== 'undefined') {
                 Email del usuario *
               </label>
               <div class="relative">
-                <input
-                  v-model="inviteForm.email"
-                  type="email"
+                <input v-model="inviteForm.email" type="email"
                   class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
-                  placeholder="usuario@correo.com"
-                  :disabled="inviteForm.loading"
-                  @keyup.enter="inviteUser"
-                />
-                <svg class="absolute right-3 top-3 w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                  placeholder="usuario@correo.com" :disabled="inviteForm.loading" @keyup.enter="inviteUser" />
+                <svg class="absolute right-3 top-3 w-5 h-5 text-gray-400 flex-shrink-0" fill="none"
+                  stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z">
+                  </path>
                 </svg>
               </div>
               <p class="text-xs text-gray-500 mt-2 flex items-center">
-                <svg class="w-4 h-4 mr-1 text-yellow-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                <svg class="w-4 h-4 mr-1 text-yellow-500 flex-shrink-0" fill="none" stroke="currentColor"
+                  viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                 </svg>
                 <span>El usuario recibirá un correo para aceptar la invitación</span>
               </p>
             </div>
-            
+
             <!-- Botones de acción -->
             <div class="flex gap-3 pt-2">
-              <button
-                @click="inviteUser"
-                :disabled="inviteForm.loading || !inviteForm.email.trim()"
-                class="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center font-medium min-w-0"
-              >
-                <svg v-if="inviteForm.loading" class="w-4 h-4 mr-2 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24">
+              <button @click="inviteUser" :disabled="inviteForm.loading || !inviteForm.email.trim()"
+                class="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center font-medium min-w-0">
+                <svg v-if="inviteForm.loading" class="w-4 h-4 mr-2 animate-spin flex-shrink-0" fill="none"
+                  viewBox="0 0 24 24">
                   <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <path class="opacity-75" fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                  </path>
                 </svg>
                 <svg v-else class="w-4 h-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z">
+                  </path>
                 </svg>
                 <span class="truncate">{{ inviteForm.loading ? 'Enviando...' : 'Enviar Invitación' }}</span>
               </button>
-              <button
-                @click="showInviteModal = false; selectedGroupForInvite = null"
-                :disabled="inviteForm.loading"
-                class="px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors disabled:opacity-50 font-medium flex-shrink-0"
-              >
+              <button @click="showInviteModal = false; selectedGroupForInvite = null" :disabled="inviteForm.loading"
+                class="px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors disabled:opacity-50 font-medium flex-shrink-0">
                 Cancelar
               </button>
             </div>
@@ -1458,7 +1233,8 @@ if (typeof window !== 'undefined') {
       </div>
 
       <!-- Estado de carga -->
-      <div v-if="loading && userGroups.length === 0" class="fixed inset-0 bg-white bg-opacity-75 flex items-center justify-center z-50">
+      <div v-if="loading && userGroups.length === 0"
+        class="fixed inset-0 bg-white bg-opacity-75 flex items-center justify-center z-50">
         <div class="text-center">
           <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto mb-4"></div>
           <span class="text-gray-600">Cargando datos con auto-sincronización...</span>

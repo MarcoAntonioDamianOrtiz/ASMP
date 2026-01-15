@@ -36,7 +36,13 @@ export {
   getGroupAlerts,
   subscribeToGroupAlerts,
   resolveGroupAlert,
-  getGroupAlertStats
+  getGroupAlertStats,
+  // NUEVAS EXPORTACIONES
+  getSmartWatchAlerts,
+  getAllUserAlerts,
+  subscribeToAllUserAlerts,
+  resolveAlert,
+  resolveSmartWatchAlert
 } from './alerts';
 
 // Export locations functions
